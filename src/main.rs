@@ -1,7 +1,7 @@
 pub mod helpers;
 
-use crate::helpers::process_feature;
-use geo::{LineString, Point, Polygon};
+use crate::helpers::process_geometry;
+use geo::{CoordsIter, LineString, Point, Polygon};
 use geojson::Feature;
 use helpers::process_feature_collection;
 use serde_json::json;
@@ -48,6 +48,13 @@ fn main() -> Result<(), ProjectionError> {
         feature_collection_example
     );
 
+    // convert feature collection to projected
+    let feature_collection_example = process_feature_collection_example()?;
+    println!(
+        "Feature collection example: {:?}",
+        feature_collection_example
+    );
+
     Ok(())
 }
 
@@ -65,7 +72,7 @@ fn process_line_string_example() -> Result<ProcessedGeometry, ProjectionError> {
         }
     });
     let feature = Feature::from_json_value(json_value)?;
-    let projected = process_feature(feature)?;
+    let projected = process_geometry(feature)?;
     Ok(projected)
 }
 
@@ -82,7 +89,7 @@ fn process_point_example() -> Result<ProcessedGeometry, ProjectionError> {
     // parse json into feature
     let feature = Feature::from_json_value(json_value)?;
     // extract geometry and project
-    let projected = process_feature(feature)?;
+    let projected = process_geometry(feature)?;
     Ok(projected)
 }
 
@@ -104,7 +111,7 @@ fn process_polygon_example() -> Result<ProcessedGeometry, ProjectionError> {
         }
     });
     let feature = Feature::from_json_value(json_value)?;
-    let projected = process_feature(feature)?;
+    let projected = process_geometry(feature)?;
     Ok(projected)
 }
 
@@ -163,4 +170,119 @@ fn process_featurecollection_example() -> Result<Vec<ProcessedGeometry>, Project
         }
         _ => Err(ProjectionError::InvalidGeometryType),
     }
+}
+
+fn process_feature_collection_example() -> Result<(), ProjectionError> {
+    let json_value = json!({
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": null,
+          "geometry": {
+            "type": "Point",
+            "coordinates": [13.377, 52.518]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": null,
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [13.377, 52.518],
+              [13.379, 52.517],
+              [13.381, 52.516]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [13.350, 52.515],
+                [13.355, 52.515],
+                [13.355, 52.510],
+                [13.350, 52.510],
+                [13.350, 52.515]
+              ]
+            ]
+          }
+        }
+      ]
+    });
+    let geojson_data = geojson::GeoJson::from_json_value(json_value)?;
+    let mut transformed_features: Vec<Feature> = Vec::new();
+
+    match geojson_data {
+        geojson::GeoJson::FeatureCollection(fc) => {
+            println!(
+                "Successfully parsed FeatureCollection with {} features",
+                fc.features.len()
+            );
+            for original_feature in fc.features {
+                let processed_geometry = process_geometry(original_feature.clone())?;
+                let transformed_feature = match processed_geometry {
+                    ProcessedGeometry::Point(point) => Feature {
+                        bbox: None,
+                        geometry: Some(geojson::Geometry::new(geojson::Value::Point(vec![
+                            point.x(),
+                            point.y(),
+                        ]))),
+                        id: original_feature.id,
+                        properties: original_feature.properties,
+                        foreign_members: original_feature.foreign_members,
+                    },
+                    ProcessedGeometry::LineString(line_string) => Feature {
+                        bbox: None,
+                        geometry: Some(geojson::Geometry::new(geojson::Value::LineString(
+                            line_string
+                                .into_iter()
+                                .map(|coord| vec![coord.x, coord.y])
+                                .collect(),
+                        ))),
+                        id: original_feature.id,
+                        properties: original_feature.properties,
+                        foreign_members: original_feature.foreign_members,
+                    },
+                    ProcessedGeometry::Polygon(polygon) => Feature {
+                        bbox: None,
+                        geometry: Some(geojson::Geometry::new(geojson::Value::Polygon(
+                            polygon
+                                .exterior()
+                                .coords_iter()
+                                .map(|coord| vec![coord.x, coord.y])
+                                .collect::<Vec<_>>()
+                                .chunks(polygon.exterior().coords_count()) // This might need adjustment for interior rings
+                                .map(|chunk| chunk.to_vec())
+                                .collect(),
+                        ))),
+                        id: original_feature.id,
+                        properties: original_feature.properties,
+                        foreign_members: original_feature.foreign_members,
+                    },
+                };
+                transformed_features.push(transformed_feature);
+            }
+            // Create the new FeatureCollection
+            let new_feature_collection = geojson::FeatureCollection {
+                bbox: None,
+                features: transformed_features,
+                foreign_members: None,
+            };
+
+            println!(
+                "Created new FeatureCollection with {} transformed features",
+                new_feature_collection.features.len()
+            );
+            // You can now serialize this new_feature_collection to JSON if needed
+            let json_output = serde_json::to_string_pretty(&new_feature_collection).unwrap();
+            println!("{}", json_output);
+        }
+        _ => todo!(),
+    }
+    Ok(())
 }

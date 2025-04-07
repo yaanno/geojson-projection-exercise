@@ -137,7 +137,7 @@ pub fn convert_polygon_to_projected(
 /// # Returns
 ///
 /// * `ProcessedGeometry` - A processed geometry
-pub fn process_feature(feature: Feature) -> Result<ProcessedGeometry, ProjectionError> {
+pub fn process_geometry(feature: Feature) -> Result<ProcessedGeometry, ProjectionError> {
     match feature.geometry {
         Some(geometry) => match geometry.value {
             geojson::Value::Point(point) => convert_point_to_projected(point),
@@ -165,7 +165,7 @@ pub fn process_feature_collection(
 ) -> Result<Vec<ProcessedGeometry>, ProjectionError> {
     let mut processed_features = Vec::new();
     for feature in fc.features {
-        let processed_feature = process_feature(feature)?;
+        let processed_feature = process_geometry(feature)?;
         processed_features.push(processed_feature);
     }
     Ok(processed_features)

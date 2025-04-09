@@ -183,22 +183,34 @@ fn process_feature_collection_example() -> Result<(), ProjectionError> {
                         properties: original_feature.properties,
                         foreign_members: original_feature.foreign_members,
                     },
-                    ProcessedGeometry::Polygon(polygon) => Feature {
-                        bbox: None,
-                        geometry: Some(geojson::Geometry::new(geojson::Value::Polygon(
-                            polygon
-                                .exterior()
+                    ProcessedGeometry::Polygon(polygon) => {
+                        let mut rings: Vec<Vec<Vec<f64>>> = Vec::new();
+
+                        // Process the exterior ring
+                        let exterior_ring: Vec<Vec<f64>> = polygon
+                            .exterior()
+                            .coords_iter()
+                            .map(|coord| vec![coord.x, coord.y])
+                            .collect();
+                        rings.push(exterior_ring);
+
+                        // Process the interior rings (holes)
+                        for interior in polygon.interiors() {
+                            let interior_ring: Vec<Vec<f64>> = interior
                                 .coords_iter()
                                 .map(|coord| vec![coord.x, coord.y])
-                                .collect::<Vec<_>>()
-                                .chunks(polygon.exterior().coords_count()) // This might need adjustment for interior rings
-                                .map(|chunk| chunk.to_vec())
-                                .collect(),
-                        ))),
-                        id: original_feature.id,
-                        properties: original_feature.properties,
-                        foreign_members: original_feature.foreign_members,
-                    },
+                                .collect();
+                            rings.push(interior_ring);
+                        }
+
+                        Feature {
+                            bbox: None,
+                            geometry: Some(geojson::Geometry::new(geojson::Value::Polygon(rings))),
+                            id: original_feature.id,
+                            properties: original_feature.properties,
+                            foreign_members: original_feature.foreign_members,
+                        }
+                    }
                 };
                 transformed_features.push(transformed_feature);
             }

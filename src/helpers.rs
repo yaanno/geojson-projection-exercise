@@ -1,4 +1,7 @@
-use geo::{CoordsIter, LineString, Point, Polygon};
+use geo::{
+    CoordsIter, GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point,
+    Polygon,
+};
 use geojson::{Feature, Geometry};
 use proj::Proj;
 use thiserror::Error;
@@ -22,6 +25,10 @@ pub enum ProcessedGeometry {
     Point(Point<f64>),
     LineString(LineString<f64>),
     Polygon(Polygon<f64>),
+    MultiPoint(MultiPoint<f64>),
+    MultiLineString(MultiLineString<f64>),
+    MultiPolygon(MultiPolygon<f64>),
+    GeometryCollection(GeometryCollection<f64>),
 }
 
 impl ProcessedGeometry {
@@ -43,7 +50,8 @@ impl ProcessedGeometry {
                 geojson::Geometry::new(geojson::Value::LineString(coordinates))
             }
             ProcessedGeometry::Polygon(polygon) => {
-                let mut rings: Vec<Vec<Vec<f64>>> = Vec::new();
+                let mut rings: Vec<Vec<Vec<f64>>> =
+                    Vec::with_capacity(polygon.interiors().len() + 1);
 
                 // Process the exterior ring
                 let exterior_ring: Vec<Vec<f64>> = polygon
@@ -64,6 +72,10 @@ impl ProcessedGeometry {
 
                 geojson::Geometry::new(geojson::Value::Polygon(rings))
             }
+            ProcessedGeometry::MultiPoint(_multi_point) => todo!(),
+            ProcessedGeometry::MultiLineString(_multi_line_string) => todo!(),
+            ProcessedGeometry::MultiPolygon(_multi_polygon) => todo!(),
+            ProcessedGeometry::GeometryCollection(_geometry_collection) => todo!(),
         }
     }
 }
@@ -123,29 +135,17 @@ impl GeometryProcessor {
     }
     pub fn convert(&self) -> Result<ProcessedGeometry, ProjectionError> {
         match &self.geometry.value {
-            geojson::Value::Point(point) => convert_point(point.to_vec(), self.config.clone()),
+            geojson::Value::Point(point) => convert_point(point.to_vec(), &self.config),
             geojson::Value::LineString(line_string) => {
-                convert_line_string(line_string.to_vec(), self.config.clone())
+                convert_line_string(line_string.to_vec(), &self.config)
             }
-            geojson::Value::Polygon(polygon) => {
-                convert_polygon(polygon.to_vec(), self.config.clone())
-            }
+            geojson::Value::Polygon(polygon) => convert_polygon(polygon.to_vec(), &self.config),
             geojson::Value::MultiPoint(_items) => todo!(),
             geojson::Value::MultiLineString(_items) => todo!(),
             geojson::Value::MultiPolygon(_items) => todo!(),
             geojson::Value::GeometryCollection(_items) => todo!(),
         }
     }
-}
-
-/// Get a transformer
-///
-/// # Returns
-///
-/// * `Proj` - A transformer
-pub fn get_transformer(config: TransformerConfig) -> Result<Proj, ProjectionError> {
-    let transformer = config.get_transformer()?;
-    Ok(transformer)
 }
 
 /// Convert a point
@@ -160,7 +160,7 @@ pub fn get_transformer(config: TransformerConfig) -> Result<Proj, ProjectionErro
 /// * `ProcessedGeometry::Point` - A projected point
 pub fn convert_point(
     p: Vec<f64>,
-    config: TransformerConfig,
+    config: &TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     if p.len() != 2 {
         return Err(ProjectionError::InvalidCoordinates(
@@ -185,10 +185,10 @@ pub fn convert_point(
 /// * `ProcessedGeometry::LineString` - A projected line string
 pub fn convert_line_string(
     ls: Vec<Vec<f64>>,
-    config: TransformerConfig,
+    config: &TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let transformer = config.get_transformer()?;
-    let mut projected_coords = Vec::<Point<f64>>::new();
+    let mut projected_coords = Vec::<Point<f64>>::with_capacity(ls.len());
     for coord_pair in ls {
         if coord_pair.len() != 2 {
             return Err(ProjectionError::InvalidCoordinates(
@@ -215,10 +215,10 @@ pub fn convert_line_string(
 /// * `LineString<f64>` - A projected linear ring
 pub fn convert_linear_ring(
     ring: Vec<Vec<f64>>,
-    config: TransformerConfig,
+    config: &TransformerConfig,
 ) -> Result<LineString<f64>, ProjectionError> {
     let transformer = config.get_transformer()?;
-    let mut projected_coords = Vec::<Point<f64>>::new();
+    let mut projected_coords = Vec::<Point<f64>>::with_capacity(ring.len());
     for coord_pair in ring {
         if coord_pair.len() != 2 {
             return Err(ProjectionError::InvalidCoordinates(
@@ -244,7 +244,7 @@ pub fn convert_linear_ring(
 /// * `ProcessedGeometry::Polygon` - A polygon with the coordinates projected
 pub fn convert_polygon(
     polygon: Vec<Vec<Vec<f64>>>,
-    config: TransformerConfig,
+    config: &TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     if polygon.is_empty() {
         return Err(ProjectionError::InvalidCoordinates(
@@ -253,12 +253,12 @@ pub fn convert_polygon(
     }
 
     // The first linear ring is the exterior ring
-    let exterior_ring = convert_linear_ring(polygon[0].clone(), config.clone())?;
+    let exterior_ring = convert_linear_ring(polygon[0].clone(), config)?;
 
     // Any subsequent linear rings are interior rings (holes)
     let mut interior_rings = Vec::new();
     for inner_ring in polygon.iter().skip(1) {
-        let transformed_ring = convert_linear_ring(inner_ring.clone(), config.clone())?;
+        let transformed_ring = convert_linear_ring(inner_ring.clone(), config)?;
         interior_rings.push(transformed_ring);
     }
 
@@ -278,7 +278,7 @@ pub fn convert_polygon(
 /// * `ProcessedGeometry` - A processed geometry
 pub fn process_feature_geometry(
     feature: Feature,
-    config: TransformerConfig,
+    config: &TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     match feature.geometry {
         Some(geometry) => process_geometry(geometry, config),
@@ -298,7 +298,7 @@ pub fn process_feature_geometry(
 /// * `ProcessedGeometry` - A processed geometry
 pub fn process_geometry(
     geometry: Geometry,
-    config: TransformerConfig,
+    config: &TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let processor = GeometryProcessor::new(geometry, config.clone());
     processor.convert()
@@ -323,9 +323,10 @@ pub fn process_feature_collection(
 
     match geojson_data {
         geojson::GeoJson::FeatureCollection(fc) => {
+            transformed_features.reserve(fc.features.len());
             for original_feature in fc.features {
                 let processed_geometry =
-                    process_feature_geometry(original_feature.clone(), config.clone())?;
+                    process_feature_geometry(original_feature.clone(), &config)?;
                 let transformed_feature = match processed_geometry {
                     ProcessedGeometry::Point(point) => Feature {
                         bbox: None,
@@ -350,6 +351,10 @@ pub fn process_feature_collection(
                         properties: original_feature.properties,
                         foreign_members: original_feature.foreign_members,
                     },
+                    ProcessedGeometry::MultiPoint(_multi_point) => todo!(),
+                    ProcessedGeometry::MultiLineString(_multi_line_string) => todo!(),
+                    ProcessedGeometry::MultiPolygon(_multi_polygon) => todo!(),
+                    ProcessedGeometry::GeometryCollection(_geometry_collection) => todo!(),
                 };
                 transformed_features.push(transformed_feature);
             }
@@ -363,7 +368,7 @@ pub fn process_feature_collection(
             return Ok(geojson::GeoJson::FeatureCollection(new_feature_collection));
         }
         geojson::GeoJson::Feature(feature) => {
-            let processed_geometry = process_feature_geometry(feature.clone(), config)?;
+            let processed_geometry = process_feature_geometry(feature.clone(), &config)?;
             let transformed_feature = Feature {
                 bbox: None,
                 geometry: Some(processed_geometry.to_geojson_geometry()),
@@ -374,7 +379,7 @@ pub fn process_feature_collection(
             return Ok(geojson::GeoJson::Feature(transformed_feature));
         }
         geojson::GeoJson::Geometry(geometry) => {
-            let processed_geometry = process_geometry(geometry.clone(), config)?;
+            let processed_geometry = process_geometry(geometry.clone(), &config)?;
             return Ok(geojson::GeoJson::Geometry(
                 processed_geometry.to_geojson_geometry(),
             ));

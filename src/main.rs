@@ -41,7 +41,48 @@ fn main() -> Result<(), ProjectionError> {
     println!("Polygon example: {:?}", polygon_example);
 
     // convert feature collection to projected
-    let feature_collection_example = process_feature_collection_example()?;
+    let json_value = json!({
+      "type": "FeatureCollection",
+      "features": [
+        {
+          "type": "Feature",
+          "properties": null,
+          "geometry": {
+            "type": "Point",
+            "coordinates": [13.377, 52.518]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": null,
+          "geometry": {
+            "type": "LineString",
+            "coordinates": [
+              [13.377, 52.518],
+              [13.379, 52.517],
+              [13.381, 52.516]
+            ]
+          }
+        },
+        {
+          "type": "Feature",
+          "properties": {},
+          "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+              [
+                [13.350, 52.515],
+                [13.355, 52.515],
+                [13.355, 52.510],
+                [13.350, 52.510],
+                [13.350, 52.515]
+              ]
+            ]
+          }
+        }
+      ]
+    });
+    let feature_collection_example = process_feature_collection_example(json_value)?;
     println!(
         "Feature collection example: {:?}",
         feature_collection_example
@@ -107,48 +148,9 @@ fn process_polygon_example() -> Result<ProcessedGeometry, ProjectionError> {
     Ok(projected)
 }
 
-fn process_feature_collection_example() -> Result<(), ProjectionError> {
-    let json_value = json!({
-      "type": "FeatureCollection",
-      "features": [
-        {
-          "type": "Feature",
-          "properties": null,
-          "geometry": {
-            "type": "Point",
-            "coordinates": [13.377, 52.518]
-          }
-        },
-        {
-          "type": "Feature",
-          "properties": null,
-          "geometry": {
-            "type": "LineString",
-            "coordinates": [
-              [13.377, 52.518],
-              [13.379, 52.517],
-              [13.381, 52.516]
-            ]
-          }
-        },
-        {
-          "type": "Feature",
-          "properties": {},
-          "geometry": {
-            "type": "Polygon",
-            "coordinates": [
-              [
-                [13.350, 52.515],
-                [13.355, 52.515],
-                [13.355, 52.510],
-                [13.350, 52.510],
-                [13.350, 52.515]
-              ]
-            ]
-          }
-        }
-      ]
-    });
+fn process_feature_collection_example(
+    json_value: serde_json::Value,
+) -> Result<(), ProjectionError> {
     let geojson_data = geojson::GeoJson::from_json_value(json_value)?;
     let mut transformed_features: Vec<Feature> = Vec::new();
 
@@ -229,7 +231,7 @@ fn process_feature_collection_example() -> Result<(), ProjectionError> {
             let json_output = serde_json::to_string_pretty(&new_feature_collection).unwrap();
             println!("{}", json_output);
         }
-        _ => todo!(),
+        _ => return Err(ProjectionError::InvalidGeometryType),
     }
     Ok(())
 }

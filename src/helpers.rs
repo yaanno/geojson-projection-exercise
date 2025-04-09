@@ -12,9 +12,7 @@ use proj::Proj;
 /// # Returns
 ///
 /// * `Proj` - A transformer
-pub fn get_transformer() -> Result<Proj, ProjectionError> {
-    let from = "EPSG:4326";
-    let to = "EPSG:25832";
+pub fn get_transformer(from: &str, to: &str) -> Result<Proj, ProjectionError> {
     let transformer = Proj::new_known_crs(&from, &to, None)?;
     Ok(transformer)
 }
@@ -34,7 +32,23 @@ pub fn convert_point_to_projected(p: Vec<f64>) -> Result<ProcessedGeometry, Proj
             "Point must have exactly 2 coordinates".to_string(),
         ));
     }
-    let transformer = get_transformer()?;
+    let from = "EPSG:4326";
+    let to = "EPSG:25832";
+    let transformer = get_transformer(from, to)?;
+    let point = Point::new(p[0], p[1]);
+    let projected = transformer.convert(point)?;
+    Ok(ProcessedGeometry::Point(projected.into()))
+}
+
+pub fn convert_point_to_geographic(p: Vec<f64>) -> Result<ProcessedGeometry, ProjectionError> {
+    if p.len() != 2 {
+        return Err(ProjectionError::InvalidCoordinates(
+            "Point must have exactly 2 coordinates".to_string(),
+        ));
+    }
+    let from = "EPSG:25832";
+    let to = "EPSG:4326";
+    let transformer = get_transformer(from, to)?;
     let point = Point::new(p[0], p[1]);
     let projected = transformer.convert(point)?;
     Ok(ProcessedGeometry::Point(projected.into()))
@@ -53,7 +67,9 @@ pub fn convert_point_to_projected(p: Vec<f64>) -> Result<ProcessedGeometry, Proj
 fn convert_line_string_to_projected(
     ls: Vec<Vec<f64>>,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let transformer = get_transformer()?;
+    let from = "EPSG:4326";
+    let to = "EPSG:25832";
+    let transformer = get_transformer(from, to)?;
     let mut projected_coords = Vec::<Point<f64>>::new();
     for coord_pair in ls {
         if coord_pair.len() != 2 {
@@ -81,7 +97,9 @@ fn convert_line_string_to_projected(
 pub fn convert_linear_ring_to_projected(
     ring: Vec<Vec<f64>>,
 ) -> Result<LineString<f64>, ProjectionError> {
-    let transformer = get_transformer()?;
+    let from = "EPSG:4326";
+    let to = "EPSG:25832";
+    let transformer = get_transformer(from, to)?;
     let mut projected_coords = Vec::<Point<f64>>::new();
     for coord_pair in ring {
         if coord_pair.len() != 2 {

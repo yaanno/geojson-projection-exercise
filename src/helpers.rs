@@ -1,7 +1,72 @@
 use crate::{ProcessedGeometry, ProjectionError};
 use geo::{LineString, Point, Polygon};
-use geojson::{Feature, FeatureCollection, Geometry};
+use geojson::{Feature, Geometry};
 use proj::Proj;
+
+#[derive(Clone, Debug)]
+pub struct TransformerConfig {
+    from: String,
+    to: String,
+    inverse: bool,
+}
+
+impl TransformerConfig {
+    pub fn new(from: String, to: String, inverse: bool) -> Self {
+        Self { from, to, inverse }
+    }
+    pub fn get_transformer(&self) -> Result<Proj, ProjectionError> {
+        let transformer = Proj::new_known_crs(&self.from, &self.to, None)?;
+        Ok(transformer)
+    }
+    pub fn default() -> Self {
+        Self {
+            from: "EPSG:4326".to_string(),
+            to: "EPSG:25832".to_string(),
+            inverse: false,
+        }
+    }
+}
+
+pub struct GeometryProcessor {
+    geometry: Geometry,
+    config: TransformerConfig,
+}
+
+impl GeometryProcessor {
+    pub fn new(geometry: Geometry, config: TransformerConfig) -> Self {
+        Self { geometry, config }
+    }
+    pub fn convert(&self) -> Result<ProcessedGeometry, ProjectionError> {
+        match &self.geometry.value {
+            geojson::Value::Point(point) => convert_point(point.to_vec(), self.config.clone()),
+            geojson::Value::LineString(line_string) => {
+                convert_line_string(line_string.to_vec(), self.config.clone())
+            }
+            geojson::Value::Polygon(polygon) => {
+                convert_polygon(polygon.to_vec(), self.config.clone())
+            }
+            geojson::Value::MultiPoint(_items) => todo!(),
+            geojson::Value::MultiLineString(_items) => todo!(),
+            geojson::Value::MultiPolygon(_items) => todo!(),
+            geojson::Value::GeometryCollection(_items) => todo!(),
+        }
+    }
+    pub fn invert(&self) -> Result<ProcessedGeometry, ProjectionError> {
+        match &self.geometry.value {
+            geojson::Value::Point(point) => convert_point(point.to_vec(), self.config.clone()),
+            geojson::Value::LineString(line_string) => {
+                convert_line_string(line_string.to_vec(), self.config.clone())
+            }
+            geojson::Value::Polygon(polygon) => {
+                convert_polygon(polygon.to_vec(), self.config.clone())
+            }
+            geojson::Value::MultiPoint(_items) => todo!(),
+            geojson::Value::MultiLineString(_items) => todo!(),
+            geojson::Value::MultiPolygon(_items) => todo!(),
+            geojson::Value::GeometryCollection(_items) => todo!(),
+        }
+    }
+}
 
 // ------------------------
 // Helper functions
@@ -12,64 +77,31 @@ use proj::Proj;
 /// # Returns
 ///
 /// * `Proj` - A transformer
-pub fn get_transformer(from: &str, to: &str) -> Result<Proj, ProjectionError> {
-    let transformer = Proj::new_known_crs(&from, &to, None)?;
+pub fn get_transformer(config: TransformerConfig) -> Result<Proj, ProjectionError> {
+    let transformer = config.get_transformer()?;
     Ok(transformer)
 }
 
-/// Convert a point to projected
-///
-/// # Arguments
-///
-/// * `p` - A vector of f64, representing the coordinates of the point
-///
-/// # Returns
-///
-/// * `ProcessedGeometry::Point` - A point with the coordinates projected
-pub fn convert_point_to_projected(p: Vec<f64>) -> Result<ProcessedGeometry, ProjectionError> {
-    if p.len() != 2 {
-        return Err(ProjectionError::InvalidCoordinates(
-            "Point must have exactly 2 coordinates".to_string(),
-        ));
-    }
-    let from = "EPSG:4326";
-    let to = "EPSG:25832";
-    let transformer = get_transformer(from, to)?;
-    let point = Point::new(p[0], p[1]);
-    let projected = transformer.convert(point)?;
-    Ok(ProcessedGeometry::Point(projected.into()))
-}
-
-pub fn convert_point_to_geographic(p: Vec<f64>) -> Result<ProcessedGeometry, ProjectionError> {
-    if p.len() != 2 {
-        return Err(ProjectionError::InvalidCoordinates(
-            "Point must have exactly 2 coordinates".to_string(),
-        ));
-    }
-    let from = "EPSG:25832";
-    let to = "EPSG:4326";
-    let transformer = get_transformer(from, to)?;
-    let point = Point::new(p[0], p[1]);
-    let projected = transformer.convert(point)?;
-    Ok(ProcessedGeometry::Point(projected.into()))
-}
-
-/// Convert a line string to projected
-///
-/// # Arguments
-///
-/// * `ls` - A vector of vectors of f64, representing the coordinates of the line string
-///
-/// # Returns
-///
-/// * `ProcessedGeometry::LineString` - A line string with the coordinates projected
-///
-fn convert_line_string_to_projected(
-    ls: Vec<Vec<f64>>,
+pub fn convert_point(
+    p: Vec<f64>,
+    config: TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let from = "EPSG:4326";
-    let to = "EPSG:25832";
-    let transformer = get_transformer(from, to)?;
+    if p.len() != 2 {
+        return Err(ProjectionError::InvalidCoordinates(
+            "Point must have exactly 2 coordinates".to_string(),
+        ));
+    }
+    let transformer = config.get_transformer()?;
+    let point = Point::new(p[0], p[1]);
+    let projected = transformer.convert(point)?;
+    Ok(ProcessedGeometry::Point(projected.into()))
+}
+
+pub fn convert_line_string(
+    ls: Vec<Vec<f64>>,
+    config: TransformerConfig,
+) -> Result<ProcessedGeometry, ProjectionError> {
+    let transformer = config.get_transformer()?;
     let mut projected_coords = Vec::<Point<f64>>::new();
     for coord_pair in ls {
         if coord_pair.len() != 2 {
@@ -85,21 +117,11 @@ fn convert_line_string_to_projected(
     Ok(ProcessedGeometry::LineString(line_string))
 }
 
-/// Convert a linear ring to projected
-///
-/// # Arguments
-///
-/// * `ring` - A vector of vectors of f64, representing the coordinates of the linear ring
-///
-/// # Returns
-///
-/// * `ProcessedGeometry::LineString` - A line string with the coordinates projected
-pub fn convert_linear_ring_to_projected(
+pub fn convert_linear_ring(
     ring: Vec<Vec<f64>>,
+    config: TransformerConfig,
 ) -> Result<LineString<f64>, ProjectionError> {
-    let from = "EPSG:4326";
-    let to = "EPSG:25832";
-    let transformer = get_transformer(from, to)?;
+    let transformer = config.get_transformer()?;
     let mut projected_coords = Vec::<Point<f64>>::new();
     for coord_pair in ring {
         if coord_pair.len() != 2 {
@@ -114,7 +136,7 @@ pub fn convert_linear_ring_to_projected(
     Ok(LineString::from(projected_coords))
 }
 
-/// Convert a polygon to projected
+/// Convert a polygon
 ///
 /// # Arguments
 ///
@@ -123,8 +145,9 @@ pub fn convert_linear_ring_to_projected(
 /// # Returns
 ///
 /// * `ProcessedGeometry::Polygon` - A polygon with the coordinates projected
-pub fn convert_polygon_to_projected(
+pub fn convert_polygon(
     polygon: Vec<Vec<Vec<f64>>>,
+    config: TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     if polygon.is_empty() {
         return Err(ProjectionError::InvalidCoordinates(
@@ -133,12 +156,12 @@ pub fn convert_polygon_to_projected(
     }
 
     // The first linear ring is the exterior ring
-    let exterior_ring = convert_linear_ring_to_projected(polygon[0].clone())?;
+    let exterior_ring = convert_linear_ring(polygon[0].clone(), config.clone())?;
 
     // Any subsequent linear rings are interior rings (holes)
     let mut interior_rings = Vec::new();
     for inner_ring in polygon.iter().skip(1) {
-        let transformed_ring = convert_linear_ring_to_projected(inner_ring.clone())?;
+        let transformed_ring = convert_linear_ring(inner_ring.clone(), config.clone())?;
         interior_rings.push(transformed_ring);
     }
 
@@ -155,9 +178,12 @@ pub fn convert_polygon_to_projected(
 /// # Returns
 ///
 /// * `ProcessedGeometry` - A processed geometry
-pub fn process_geometry(feature: Feature) -> Result<ProcessedGeometry, ProjectionError> {
+pub fn process_feature_geometry(
+    feature: Feature,
+    config: TransformerConfig,
+) -> Result<ProcessedGeometry, ProjectionError> {
     match feature.geometry {
-        Some(geometry) => process_geometry_from_geometry(geometry),
+        Some(geometry) => process_geometry(geometry, config),
         None => Err(ProjectionError::InvalidGeometryType),
     }
 }
@@ -171,33 +197,14 @@ pub fn process_geometry(feature: Feature) -> Result<ProcessedGeometry, Projectio
 /// # Returns
 ///
 /// * `ProcessedGeometry` - A processed geometry
-pub fn process_geometry_from_geometry(
+pub fn process_geometry(
     geometry: Geometry,
+    config: TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    match geometry.value {
-        geojson::Value::Point(point) => convert_point_to_projected(point),
-        geojson::Value::LineString(line_string) => convert_line_string_to_projected(line_string),
-        geojson::Value::Polygon(polygon) => convert_polygon_to_projected(polygon),
-        _ => Err(ProjectionError::InvalidGeometryType),
+    let processor = GeometryProcessor::new(geometry, config.clone());
+    if config.inverse {
+        processor.invert()
+    } else {
+        processor.convert()
     }
-}
-
-/// Process a feature collection
-///
-/// # Arguments
-///
-/// * `fc` - A feature collection
-///
-/// # Returns
-///
-/// * `Vec<ProcessedGeometry>` - A vector of processed features
-pub fn process_feature_collection(
-    fc: FeatureCollection,
-) -> Result<Vec<ProcessedGeometry>, ProjectionError> {
-    let mut processed_features = Vec::new();
-    for feature in fc.features {
-        let processed_feature = process_geometry(feature)?;
-        processed_features.push(processed_feature);
-    }
-    Ok(processed_features)
 }

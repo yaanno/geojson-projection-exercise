@@ -29,15 +29,52 @@ pub enum ProcessedGeometry {
 
 fn main() -> Result<(), ProjectionError> {
     // convert point to projected
-    let point_example = process_point_example()?;
+
+    let json_value = json!({
+        "type": "Feature",
+        "properties": null,
+        "geometry": {
+            "type": "Point",
+            "coordinates": [13.377, 52.518]
+        }
+    });
+    let point_example = process_point_example(json_value)?;
     println!("Point example: {:?}", point_example);
 
     // // convert line string to projected
-    let line_string_example = process_line_string_example()?;
+    let json_value = json!({
+        "type": "Feature",
+        "properties": null,
+        "geometry": {
+            "type": "LineString",
+            "coordinates": [
+                [13.377, 52.518],   // Approximately near the Reichstag (West)
+                [13.379, 52.517],   // Moving slightly east along the river
+                [13.381, 52.516]    // Further east
+              ]
+        }
+    });
+    let line_string_example = process_line_string_example(json_value)?;
     println!("Line string example: {:?}", line_string_example);
 
     // convert polygon to projected
-    let polygon_example = process_polygon_example()?;
+    let json_value = json!({
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [ // Added an outer array here
+                [
+                    [13.350, 52.515],   // Southwest corner (approx.)
+                    [13.355, 52.515],   // Southeast corner (approx.)
+                    [13.355, 52.510],   // Northeast corner (approx.)
+                    [13.350, 52.510],   // Northwest corner (approx.)
+                    [13.350, 52.515]    // Closing the polygon
+                ]
+            ]
+        }
+    });
+    let polygon_example = process_polygon_example(json_value)?;
     println!("Polygon example: {:?}", polygon_example);
 
     // convert feature collection to projected
@@ -91,34 +128,17 @@ fn main() -> Result<(), ProjectionError> {
     Ok(())
 }
 
-fn process_line_string_example() -> Result<ProcessedGeometry, ProjectionError> {
-    let json_value = json!({
-        "type": "Feature",
-        "properties": null,
-        "geometry": {
-            "type": "LineString",
-            "coordinates": [
-                [13.377, 52.518],   // Approximately near the Reichstag (West)
-                [13.379, 52.517],   // Moving slightly east along the river
-                [13.381, 52.516]    // Further east
-              ]
-        }
-    });
+fn process_line_string_example(
+    json_value: serde_json::Value,
+) -> Result<ProcessedGeometry, ProjectionError> {
     let feature = Feature::from_json_value(json_value)?;
     let projected = process_geometry(feature)?;
     Ok(projected)
 }
 
-fn process_point_example() -> Result<ProcessedGeometry, ProjectionError> {
-    // prepare feature as json
-    let json_value = json!({
-        "type": "Feature",
-        "properties": null,
-        "geometry": {
-            "type": "Point",
-            "coordinates": [13.377, 52.518]
-        }
-    });
+fn process_point_example(
+    json_value: serde_json::Value,
+) -> Result<ProcessedGeometry, ProjectionError> {
     // parse json into feature
     let feature = Feature::from_json_value(json_value)?;
     // extract geometry and project
@@ -126,23 +146,9 @@ fn process_point_example() -> Result<ProcessedGeometry, ProjectionError> {
     Ok(projected)
 }
 
-fn process_polygon_example() -> Result<ProcessedGeometry, ProjectionError> {
-    let json_value = json!({
-        "type": "Feature",
-        "properties": {},
-        "geometry": {
-            "type": "Polygon",
-            "coordinates": [ // Added an outer array here
-                [
-                    [13.350, 52.515],   // Southwest corner (approx.)
-                    [13.355, 52.515],   // Southeast corner (approx.)
-                    [13.355, 52.510],   // Northeast corner (approx.)
-                    [13.350, 52.510],   // Northwest corner (approx.)
-                    [13.350, 52.515]    // Closing the polygon
-                ]
-            ]
-        }
-    });
+fn process_polygon_example(
+    json_value: serde_json::Value,
+) -> Result<ProcessedGeometry, ProjectionError> {
     let feature = Feature::from_json_value(json_value)?;
     let projected = process_geometry(feature)?;
     Ok(projected)

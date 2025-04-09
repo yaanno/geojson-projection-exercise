@@ -1,6 +1,6 @@
 use crate::{ProcessedGeometry, ProjectionError};
 use geo::{LineString, Point, Polygon};
-use geojson::{Feature, FeatureCollection};
+use geojson::{Feature, FeatureCollection, Geometry};
 use proj::Proj;
 
 // ------------------------
@@ -157,15 +157,28 @@ pub fn convert_polygon_to_projected(
 /// * `ProcessedGeometry` - A processed geometry
 pub fn process_geometry(feature: Feature) -> Result<ProcessedGeometry, ProjectionError> {
     match feature.geometry {
-        Some(geometry) => match geometry.value {
-            geojson::Value::Point(point) => convert_point_to_projected(point),
-            geojson::Value::LineString(line_string) => {
-                convert_line_string_to_projected(line_string)
-            }
-            geojson::Value::Polygon(polygon) => convert_polygon_to_projected(polygon),
-            _ => Err(ProjectionError::InvalidGeometryType),
-        },
+        Some(geometry) => process_geometry_from_geometry(geometry),
         None => Err(ProjectionError::InvalidGeometryType),
+    }
+}
+
+/// Process a geometry
+///
+/// # Arguments
+///
+/// * `geometry` - A geometry
+///
+/// # Returns
+///
+/// * `ProcessedGeometry` - A processed geometry
+pub fn process_geometry_from_geometry(
+    geometry: Geometry,
+) -> Result<ProcessedGeometry, ProjectionError> {
+    match geometry.value {
+        geojson::Value::Point(point) => convert_point_to_projected(point),
+        geojson::Value::LineString(line_string) => convert_line_string_to_projected(line_string),
+        geojson::Value::Polygon(polygon) => convert_polygon_to_projected(polygon),
+        _ => Err(ProjectionError::InvalidGeometryType),
     }
 }
 

@@ -140,12 +140,68 @@ impl GeometryProcessor {
                 convert_line_string(line_string.to_vec(), &self.config)
             }
             geojson::Value::Polygon(polygon) => convert_polygon(polygon.to_vec(), &self.config),
-            geojson::Value::MultiPoint(_items) => todo!(),
-            geojson::Value::MultiLineString(_items) => todo!(),
-            geojson::Value::MultiPolygon(_items) => todo!(),
+            geojson::Value::MultiPoint(points) => {
+                convert_multi_point(points.to_vec(), &self.config)
+            }
+            geojson::Value::MultiLineString(line_strings) => {
+                convert_multi_line_string(line_strings.to_vec(), &self.config)
+            }
+            geojson::Value::MultiPolygon(polygons) => {
+                convert_multi_polygon(polygons.to_vec(), &self.config)
+            }
             geojson::Value::GeometryCollection(_items) => todo!(),
         }
     }
+}
+
+pub fn convert_multi_line_string(
+    line_strings: Vec<Vec<Vec<f64>>>,
+    config: &TransformerConfig,
+) -> Result<ProcessedGeometry, ProjectionError> {
+    let mut projected_line_strings = Vec::with_capacity(line_strings.len());
+    for ls in line_strings {
+        let line_string = convert_line_string(ls, config)?;
+        match line_string {
+            ProcessedGeometry::Point(p) => projected_line_strings.push(p),
+            _ => {
+                return Err(ProjectionError::InvalidCoordinates(
+                    "Expected LineString geometry".to_string(),
+                ));
+            }
+        }
+    }
+    let multi_line_string = MultiLineString::from(projected_line_strings);
+    Ok(ProcessedGeometry::MultiLineString(multi_line_string))
+}
+
+/// Convert a multi point
+///
+/// # Arguments
+///
+/// * `items` - A vector of vectors of f64, representing the coordinates of the multi point
+/// * `config` - A transformer config
+///
+/// # Returns
+///
+/// * `ProcessedGeometry::MultiPoint` - A projected multi point
+pub fn convert_multi_point(
+    points: Vec<Vec<f64>>,
+    config: &TransformerConfig,
+) -> Result<ProcessedGeometry, ProjectionError> {
+    let mut projected_points = Vec::with_capacity(points.len());
+    for p in points {
+        let point = convert_point(p, config)?;
+        match point {
+            ProcessedGeometry::Point(p) => projected_points.push(p),
+            _ => {
+                return Err(ProjectionError::InvalidCoordinates(
+                    "Expected Point geometry".to_string(),
+                ));
+            }
+        }
+    }
+    let multi_point = MultiPoint::from(projected_points);
+    Ok(ProcessedGeometry::MultiPoint(multi_point))
 }
 
 /// Convert a point
@@ -264,6 +320,37 @@ pub fn convert_polygon(
 
     let poly = Polygon::new(exterior_ring, interior_rings);
     Ok(ProcessedGeometry::Polygon(poly))
+}
+
+/// Convert a multi polygon
+///
+/// # Arguments
+///
+/// * `polygons` - A vector of vectors of vectors of f64, representing the coordinates of the multi polygon
+/// * `config` - A transformer config
+///
+/// # Returns
+///
+/// * `ProcessedGeometry::MultiPolygon` - A projected multi polygon
+pub fn convert_multi_polygon(
+    polygons: Vec<Vec<Vec<Vec<f64>>>>,
+    config: &TransformerConfig,
+) -> Result<ProcessedGeometry, ProjectionError> {
+    let mut projected_polygons = Vec::with_capacity(polygons.len());
+    for polygon in polygons {
+        let projected_polygon = convert_polygon(polygon, config)?;
+        match projected_polygon {
+            ProcessedGeometry::Polygon(p) => projected_polygons.push(p),
+            _ => {
+                return Err(ProjectionError::InvalidCoordinates(
+                    "Expected Polygon geometry".to_string(),
+                ));
+            }
+        }
+    }
+    Ok(ProcessedGeometry::MultiPolygon(MultiPolygon::from(
+        projected_polygons,
+    )))
 }
 
 /// Process a feature

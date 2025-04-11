@@ -86,6 +86,26 @@ pub struct TransformerConfig {
     to: String,
 }
 
+/// Default transformer config
+///
+/// # Returns
+///
+/// * `TransformerConfig` - A default transformer config
+///
+/// # Example
+///
+/// ```rust
+/// let config = TransformerConfig::default();
+/// ```
+impl Default for TransformerConfig {
+    fn default() -> Self {
+        Self {
+            from: "EPSG:4326".to_string(),
+            to: "EPSG:25832".to_string(),
+        }
+    }
+}
+
 impl TransformerConfig {
     /// Create a new TransformerConfig
     ///
@@ -104,17 +124,6 @@ impl TransformerConfig {
     pub fn get_transformer(&self) -> Result<Proj, ProjectionError> {
         let transformer = Proj::new_known_crs(&self.from, &self.to, None)?;
         Ok(transformer)
-    }
-    /// Get a default TransformerConfig
-    ///
-    /// # Returns
-    ///
-    /// * `TransformerConfig` - A default transformer config
-    pub fn default() -> Self {
-        Self {
-            from: "EPSG:4326".to_string(),
-            to: "EPSG:25832".to_string(),
-        }
     }
 }
 

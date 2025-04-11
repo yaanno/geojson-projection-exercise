@@ -260,6 +260,13 @@ impl TransformerConfig {
     ///
     /// * `from` - A string, representing the source coordinate reference system
     /// * `to` - A string, representing the target coordinate reference system
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::helpers::TransformerConfig;
+    /// let config = TransformerConfig::new("EPSG:4326".to_string(), "EPSG:3857".to_string());
+    /// ```
     pub fn new(from: String, to: String) -> Self {
         Self {
             from,

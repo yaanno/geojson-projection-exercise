@@ -1,7 +1,8 @@
 use geo::Point;
 use geojson::{Geometry, Value};
 use proj_exercise_simple::{
-    CoordinateBufferPool, GeometryProcessor, ProcessedGeometry, ProjectionError, TransformerConfig,
+    GeometryProcessor, TransformerConfig,
+    helpers::{ProcessedGeometry, ProjectionError},
 };
 
 #[cfg(test)]
@@ -11,7 +12,6 @@ mod tests {
     #[test]
     fn test_point_processing() {
         let mut config = TransformerConfig::default();
-        let mut pool = CoordinateBufferPool::new(10);
         let point = Geometry {
             value: Value::Point(vec![1.0, 2.0]),
             bbox: None,
@@ -19,7 +19,7 @@ mod tests {
         };
         let mut processor = GeometryProcessor::new(point, &mut config);
 
-        let result = processor.convert(&mut pool).unwrap();
+        let result = processor.convert().unwrap();
         match result {
             ProcessedGeometry::Point(p) => {
                 // Expected Web Mercator coordinates for (1,2)
@@ -33,7 +33,7 @@ mod tests {
     #[test]
     fn test_line_string_processing() {
         let mut config = TransformerConfig::default();
-        let mut pool = CoordinateBufferPool::new(10);
+
         let line_string = Geometry {
             value: Value::LineString(vec![vec![0.0, 0.0], vec![1.0, 1.0], vec![2.0, 2.0]]),
             bbox: None,
@@ -41,7 +41,7 @@ mod tests {
         };
         let mut processor = GeometryProcessor::new(line_string, &mut config);
 
-        let result = processor.convert(&mut pool).unwrap();
+        let result = processor.convert().unwrap();
         match result {
             ProcessedGeometry::LineString(ls) => {
                 assert_eq!(ls.points().count(), 3);
@@ -61,7 +61,7 @@ mod tests {
     #[test]
     fn test_polygon_processing() {
         let mut config = TransformerConfig::default();
-        let mut pool = CoordinateBufferPool::new(10);
+
         let polygon = Geometry {
             value: Value::Polygon(vec![vec![
                 vec![0.0, 0.0],
@@ -75,7 +75,7 @@ mod tests {
         };
         let mut processor = GeometryProcessor::new(polygon, &mut config);
 
-        let result = processor.convert(&mut pool).unwrap();
+        let result = processor.convert().unwrap();
         match result {
             ProcessedGeometry::Polygon(p) => {
                 assert_eq!(p.exterior().points().count(), 5);
@@ -99,7 +99,7 @@ mod tests {
     #[test]
     fn test_invalid_geometry_handling() {
         let mut config = TransformerConfig::default();
-        let mut pool = CoordinateBufferPool::new(10);
+
         let invalid_geometry = Geometry {
             value: Value::Point(vec![f64::NAN, f64::NAN]),
             bbox: None,
@@ -107,7 +107,7 @@ mod tests {
         };
         let mut processor = GeometryProcessor::new(invalid_geometry, &mut config);
 
-        let result = processor.convert(&mut pool);
+        let result = processor.convert();
         assert!(result.is_err());
         match result.unwrap_err() {
             ProjectionError::InvalidCoordinates(_) => (),
@@ -118,7 +118,7 @@ mod tests {
     #[test]
     fn test_coordinate_transformation() {
         let mut config = TransformerConfig::new("EPSG:4326".to_string(), "EPSG:3857".to_string());
-        let mut pool = CoordinateBufferPool::new(10);
+
         let point = Geometry {
             value: Value::Point(vec![0.0, 0.0]),
             bbox: None,
@@ -126,7 +126,7 @@ mod tests {
         };
         let mut processor = GeometryProcessor::new(point, &mut config);
 
-        let result = processor.convert(&mut pool).unwrap();
+        let result = processor.convert().unwrap();
         match result {
             ProcessedGeometry::Point(p) => {
                 // Expected Web Mercator coordinates for (0,0)
@@ -140,7 +140,7 @@ mod tests {
     #[test]
     fn test_geometry_collection_processing() {
         let mut config = TransformerConfig::default();
-        let mut pool = CoordinateBufferPool::new(10);
+
         let points = Geometry {
             value: Value::MultiPoint(vec![vec![0.0, 0.0], vec![1.0, 1.0]]),
             bbox: None,
@@ -148,7 +148,7 @@ mod tests {
         };
         let mut processor = GeometryProcessor::new(points, &mut config);
 
-        let result = processor.convert(&mut pool).unwrap();
+        let result = processor.convert().unwrap();
         match result {
             ProcessedGeometry::MultiPoint(mp) => {
                 assert_eq!(mp.0.len(), 2);

@@ -40,6 +40,15 @@ impl Coordinate {
     /// # Returns
     ///
     /// * `Vec<geo::Point<f64>>` - A vector of points
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let points = Coordinate::to_points(&coords);
+    /// ```
     pub fn to_points(coords: &[Coordinate]) -> Vec<geo::Point<f64>> {
         coords.iter().map(|c| geo::Point::new(c.x, c.y)).collect()
     }
@@ -53,12 +62,39 @@ impl Coordinate {
     /// # Returns
     ///
     /// * `Vec<Vec<f64>>` - A vector of coordinate vectors
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let vecs = Coordinate::to_vecs(&coords);
+    /// ```
     pub fn to_vecs(coords: &[Coordinate]) -> Vec<Vec<f64>> {
         coords.iter().map(|c| vec![c.x, c.y]).collect()
     }
 }
 
 impl From<geo::Point<f64>> for Coordinate {
+    /// Convert a geo point to a coordinate
+    ///
+    /// # Arguments
+    ///
+    /// * `point` - A geo point
+    ///
+    /// # Returns
+    ///
+    /// * `Coordinate` - A coordinate
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    ///
+    /// let point = geo::Point::new(13.377, 52.518);
+    /// let coord = Coordinate::from(point);
+    /// ```
     fn from(point: geo::Point<f64>) -> Self {
         Self {
             x: point.x(),
@@ -68,6 +104,24 @@ impl From<geo::Point<f64>> for Coordinate {
 }
 
 impl From<Coordinate> for geo::Point<f64> {
+    /// Convert a coordinate to a geo point
+    ///
+    /// # Arguments
+    ///
+    /// * `coord` - A coordinate
+    ///
+    /// # Returns
+    ///
+    /// * `geo::Point<f64>` - A geo point
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    ///
+    /// let coord = Coordinate::new(13.377, 52.518);
+    /// let point = geo::Point::from(coord);
+    /// ```
     fn from(coord: Coordinate) -> Self {
         Self::new(coord.x, coord.y)
     }
@@ -95,6 +149,16 @@ impl Line {
     /// # Returns
     ///
     /// * `Line` - A new line
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// ```
     pub fn new(coordinates: Vec<Coordinate>) -> Self {
         Self { coordinates }
     }
@@ -104,6 +168,17 @@ impl Line {
     /// # Returns
     ///
     /// * `geojson::Value` - A GeoJSON line string
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// let geojson = line.to_geojson();
+    /// ```
     pub fn to_geojson(&self) -> geojson::Value {
         geojson::Value::LineString(Coordinate::to_vecs(&self.coordinates))
     }
@@ -113,12 +188,42 @@ impl Line {
     /// # Returns
     ///
     /// * `geo::LineString<f64>` - A geo line string
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// let geo = line.to_geo();
+    /// ```
     pub fn to_geo(&self) -> geo::LineString<f64> {
         geo::LineString::from(Coordinate::to_points(&self.coordinates))
     }
 }
 
 impl FromIterator<Coordinate> for Line {
+    /// Create a new line from an iterator of coordinates
+    ///
+    /// # Arguments
+    ///
+    /// * `iter` - An iterator of coordinates
+    ///
+    /// # Returns
+    ///
+    /// * `Line` - A new line
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::from_iter(coords);
+    /// ```
     fn from_iter<T: IntoIterator<Item = Coordinate>>(iter: T) -> Self {
         Self {
             coordinates: iter.into_iter().collect(),
@@ -144,6 +249,18 @@ impl Polygon {
     /// # Returns
     ///
     /// * `Polygon` - A new polygon
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    /// use proj_exercise_simple::coordinates::Polygon;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// let polygon = Polygon::new(line, vec![]);
+    /// ```
     pub fn new(exterior: Line, interiors: Vec<Line>) -> Self {
         Self {
             exterior,
@@ -156,6 +273,19 @@ impl Polygon {
     /// # Returns
     ///
     /// * `geojson::Value` - A GeoJSON polygon
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    /// use proj_exercise_simple::coordinates::Polygon;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// let polygon = Polygon::new(line, vec![]);
+    /// let geojson = polygon.to_geojson();
+    /// ```
     pub fn to_geojson(&self) -> geojson::Value {
         let mut rings = vec![Coordinate::to_vecs(&self.exterior.coordinates)];
         rings.extend(
@@ -171,6 +301,19 @@ impl Polygon {
     /// # Returns
     ///
     /// * `geo::Polygon<f64>` - A geo polygon
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    /// use proj_exercise_simple::coordinates::Polygon;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// let polygon = Polygon::new(line, vec![]);
+    /// let geo = polygon.to_geo();
+    /// ```
     pub fn to_geo(&self) -> geo::Polygon<f64> {
         let exterior = self.exterior.to_geo();
         let interiors = self
@@ -179,5 +322,35 @@ impl Polygon {
             .map(|line| line.to_geo())
             .collect::<Vec<_>>();
         geo::Polygon::new(exterior, interiors)
+    }
+}
+
+impl FromIterator<Line> for Polygon {
+    /// Create a new polygon from an iterator of lines
+    ///
+    /// # Arguments
+    ///
+    /// * `iter` - An iterator of lines
+    ///
+    /// # Returns
+    ///
+    /// * `Polygon` - A new polygon
+    ///
+    /// # Example
+    ///
+    /// ```rust
+    /// use proj_exercise_simple::coordinates::Coordinate;
+    /// use proj_exercise_simple::coordinates::Line;
+    /// use proj_exercise_simple::coordinates::Polygon;
+    ///
+    /// let coords = vec![Coordinate::new(13.377, 52.518), Coordinate::new(13.377, 52.518)];
+    /// let line = Line::new(coords);
+    /// let polygon = Polygon::from_iter(vec![line]);
+    /// ```
+    fn from_iter<T: IntoIterator<Item = Line>>(iter: T) -> Self {
+        let mut lines = iter.into_iter().collect::<Vec<_>>();
+        let exterior = lines.remove(0);
+        let interiors = lines;
+        Self::new(exterior, interiors)
     }
 }

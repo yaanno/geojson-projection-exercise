@@ -224,28 +224,31 @@ impl ProcessedGeometry {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct TransformerConfig {
     from: String,
     to: String,
+    transformer: Option<Proj>,
 }
 
-/// Default transformer config
-///
-/// # Returns
-///
-/// * `TransformerConfig` - A default transformer config
-///
-/// # Example
-///
-/// ```rust
-/// let config = TransformerConfig::default();
-/// ```
+impl Clone for TransformerConfig {
+    fn clone(&self) -> Self {
+        // When cloning, we don't clone the transformer
+        // It will be recreated when needed
+        Self {
+            from: self.from.clone(),
+            to: self.to.clone(),
+            transformer: None,
+        }
+    }
+}
+
 impl Default for TransformerConfig {
     fn default() -> Self {
         Self {
             from: "EPSG:4326".to_string(),
             to: "EPSG:25832".to_string(),
+            transformer: None,
         }
     }
 }
@@ -258,46 +261,60 @@ impl TransformerConfig {
     /// * `from` - A string, representing the source coordinate reference system
     /// * `to` - A string, representing the target coordinate reference system
     pub fn new(from: String, to: String) -> Self {
-        Self { from, to }
+        Self {
+            from,
+            to,
+            transformer: None,
+        }
     }
+
     /// Get a transformer
     ///
     /// # Returns
     ///
     /// * `Proj` - A transformer
-    pub fn get_transformer(&self) -> Result<Proj, ProjectionError> {
-        let transformer = Proj::new_known_crs(&self.from, &self.to, None)?;
-        Ok(transformer)
+    pub fn get_transformer(&mut self) -> Result<&Proj, ProjectionError> {
+        if self.transformer.is_none() {
+            let transformer = Proj::new_known_crs(&self.from, &self.to, None)?;
+            self.transformer = Some(transformer);
+        }
+        Ok(self.transformer.as_ref().unwrap())
+    }
+
+    // Clear the cached transformer (useful if config changes)
+    pub fn clear_cache(&mut self) {
+        self.transformer = None;
     }
 }
 
-pub struct GeometryProcessor {
+pub struct GeometryProcessor<'a> {
     geometry: Geometry,
-    config: TransformerConfig,
+    config: &'a mut TransformerConfig,
 }
 
-impl GeometryProcessor {
+impl<'a> GeometryProcessor<'a> {
     /// Create a new GeometryProcessor
     ///
     /// # Arguments
     ///
     /// * `geometry` - A geometry
     /// * `config` - A transformer config
-    pub fn new(geometry: Geometry, config: TransformerConfig) -> Self {
+    pub fn new(geometry: Geometry, config: &'a mut TransformerConfig) -> Self {
         Self { geometry, config }
     }
-    pub fn convert(&self) -> Result<ProcessedGeometry, ProjectionError> {
+
+    pub fn convert(&mut self) -> Result<ProcessedGeometry, ProjectionError> {
         match &self.geometry.value {
             geojson::Value::Point(point) => {
                 let coord = Coordinate::new(point[0], point[1]);
-                convert_point(coord, &self.config)
+                convert_point(coord, self.config)
             }
             geojson::Value::LineString(line_string) => {
                 let coords = line_string
                     .iter()
                     .map(|p| Coordinate::new(p[0], p[1]))
                     .collect();
-                convert_line_string(coords, &self.config)
+                convert_line_string(coords, self.config)
             }
             geojson::Value::Polygon(polygon) => {
                 let exterior = polygon[0]
@@ -310,18 +327,18 @@ impl GeometryProcessor {
                         Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
                     })
                     .collect();
-                convert_polygon(Polygon::new(Line::new(exterior), interiors), &self.config)
+                convert_polygon(Polygon::new(Line::new(exterior), interiors), self.config)
             }
             geojson::Value::MultiPoint(points) => {
                 let coords = points.iter().map(|p| Coordinate::new(p[0], p[1])).collect();
-                convert_multi_point(coords, &self.config)
+                convert_multi_point(coords, self.config)
             }
             geojson::Value::MultiLineString(line_strings) => {
                 let lines = line_strings
                     .iter()
                     .map(|ls| Line::new(ls.iter().map(|p| Coordinate::new(p[0], p[1])).collect()))
                     .collect();
-                convert_multi_line_string(lines, &self.config)
+                convert_multi_line_string(lines, self.config)
             }
             geojson::Value::MultiPolygon(polygons) => {
                 let polys = polygons
@@ -344,12 +361,12 @@ impl GeometryProcessor {
                         Polygon::new(exterior, interiors)
                     })
                     .collect();
-                convert_multi_polygon(polys, &self.config)
+                convert_multi_polygon(polys, self.config)
             }
             geojson::Value::GeometryCollection(items) => {
                 let mut geometries = Vec::with_capacity(items.len());
                 for item in items {
-                    let processor = GeometryProcessor::new(item.clone(), self.config.clone());
+                    let mut processor = GeometryProcessor::new(item.clone(), self.config);
                     let processed = processor.convert()?;
                     geometries.push(match processed {
                         ProcessedGeometry::Point(p) => geo::Geometry::Point(p),
@@ -375,7 +392,7 @@ impl GeometryProcessor {
 
 pub fn convert_multi_line_string(
     lines: Vec<Line>,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let mut projected_line_strings = Vec::with_capacity(lines.len());
     for line in lines {
@@ -405,7 +422,7 @@ pub fn convert_multi_line_string(
 /// * `ProcessedGeometry::MultiPoint` - A projected multi point
 pub fn convert_multi_point(
     points: Vec<Coordinate>,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let mut projected_points = Vec::with_capacity(points.len());
     for point in points {
@@ -435,9 +452,9 @@ pub fn convert_multi_point(
 /// * `ProcessedGeometry::Point` - A projected point
 pub fn convert_point(
     point: Coordinate,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig, // Changed to mutable reference
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let transformer = config.get_transformer()?;
+    let transformer = config.get_transformer()?; // Now returns a reference
     let geo_point = Point::new(point.x, point.y);
     let projected = transformer.convert(geo_point)?;
     Ok(ProcessedGeometry::Point(projected.into()))
@@ -455,12 +472,11 @@ pub fn convert_point(
 /// * `ProcessedGeometry::LineString` - A projected line string
 pub fn convert_line_string(
     coordinates: Vec<Coordinate>,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig, // Changed to mutable reference
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let transformer = config.get_transformer()?;
+    let transformer = config.get_transformer()?; // Now returns a reference
     let mut projected_coords: Vec<Point<f64>> = Vec::with_capacity(coordinates.len());
 
-    // Convert each coordinate individually
     for coord in coordinates {
         let point = Point::new(coord.x, coord.y);
         let projected = transformer.convert(point)?;
@@ -483,7 +499,7 @@ pub fn convert_line_string(
 /// * `ProcessedGeometry::Polygon` - A polygon with the coordinates projected
 pub fn convert_polygon(
     polygon: Polygon,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let transformer = config.get_transformer()?;
 
@@ -525,7 +541,7 @@ pub fn convert_polygon(
 /// * `ProcessedGeometry::MultiPolygon` - A projected multi polygon
 pub fn convert_multi_polygon(
     polygons: Vec<Polygon>,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let mut projected_polygons = Vec::with_capacity(polygons.len());
     for polygon in polygons {
@@ -556,7 +572,7 @@ pub fn convert_multi_polygon(
 /// * `ProcessedGeometry` - A processed geometry
 pub fn process_feature_geometry(
     feature: Feature,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     if let Some(geometry) = feature.geometry {
         process_geometry(geometry, config)
@@ -577,9 +593,9 @@ pub fn process_feature_geometry(
 /// * `ProcessedGeometry` - A processed geometry
 pub fn process_geometry(
     geometry: Geometry,
-    config: &TransformerConfig,
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let processor = GeometryProcessor::new(geometry, config.clone());
+    let mut processor = GeometryProcessor::new(geometry, config);
     processor.convert()
 }
 
@@ -596,10 +612,10 @@ pub fn process_feature_collection(
     json_value: serde_json::Value,
 ) -> Result<geojson::GeoJson, ProjectionError> {
     let geojson = geojson::GeoJson::from_json_value(json_value)?;
-    let config = TransformerConfig::default();
+    let mut config = TransformerConfig::default();
     match geojson {
         geojson::GeoJson::Feature(feature) => {
-            let geometry = process_feature_geometry(feature, &config)?;
+            let geometry = process_feature_geometry(feature, &mut config)?;
             Ok(geojson::GeoJson::Feature(geojson::Feature {
                 bbox: None,
                 geometry: Some(geometry.to_geojson_geometry()),
@@ -611,7 +627,7 @@ pub fn process_feature_collection(
         geojson::GeoJson::FeatureCollection(feature_collection) => {
             let mut features = Vec::with_capacity(feature_collection.features.len());
             for feature in feature_collection.features {
-                let geometry = process_feature_geometry(feature, &config)?;
+                let geometry = process_feature_geometry(feature, &mut config)?;
                 features.push(geojson::Feature {
                     bbox: None,
                     geometry: Some(geometry.to_geojson_geometry()),
@@ -629,7 +645,7 @@ pub fn process_feature_collection(
             ))
         }
         geojson::GeoJson::Geometry(geometry) => {
-            let geometry = process_geometry(geometry, &config)?;
+            let geometry = process_geometry(geometry, &mut config)?;
             Ok(geojson::GeoJson::Geometry(geometry.to_geojson_geometry()))
         }
     }

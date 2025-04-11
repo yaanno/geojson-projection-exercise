@@ -74,10 +74,124 @@ impl ProcessedGeometry {
                 let polygon = Polygon::new(exterior, interiors);
                 geojson::Geometry::new(polygon.to_geojson())
             }
-            ProcessedGeometry::MultiPoint(_multi_point) => todo!(),
-            ProcessedGeometry::MultiLineString(_multi_line_string) => todo!(),
-            ProcessedGeometry::MultiPolygon(_multi_polygon) => todo!(),
-            ProcessedGeometry::GeometryCollection(_geometry_collection) => todo!(),
+            ProcessedGeometry::MultiPoint(multi_point) => {
+                let coords = multi_point.iter().map(|p| vec![p.x(), p.y()]).collect();
+                geojson::Geometry::new(geojson::Value::MultiPoint(coords))
+            }
+            ProcessedGeometry::MultiLineString(multi_line_string) => {
+                let lines = multi_line_string
+                    .iter()
+                    .map(|ls| {
+                        ls.coords_iter()
+                            .map(|coord| vec![coord.x, coord.y])
+                            .collect()
+                    })
+                    .collect();
+                geojson::Geometry::new(geojson::Value::MultiLineString(lines))
+            }
+            ProcessedGeometry::MultiPolygon(multi_polygon) => {
+                let polygons = multi_polygon
+                    .iter()
+                    .map(|poly| {
+                        let mut rings = vec![
+                            poly.exterior()
+                                .coords_iter()
+                                .map(|coord| vec![coord.x, coord.y])
+                                .collect(),
+                        ];
+                        rings.extend(poly.interiors().iter().map(|ring| {
+                            ring.coords_iter()
+                                .map(|coord| vec![coord.x, coord.y])
+                                .collect()
+                        }));
+                        rings
+                    })
+                    .collect();
+                geojson::Geometry::new(geojson::Value::MultiPolygon(polygons))
+            }
+            ProcessedGeometry::GeometryCollection(collection) => {
+                let geometries = collection
+                    .iter()
+                    .map(|geom| match geom {
+                        geo::Geometry::Point(p) => {
+                            let coord = Coordinate::from(*p);
+                            geojson::Geometry::new(geojson::Value::Point(vec![coord.x, coord.y]))
+                        }
+                        geo::Geometry::LineString(ls) => {
+                            let coords: Vec<Coordinate> = ls
+                                .coords_iter()
+                                .map(|coord| Coordinate::new(coord.x, coord.y))
+                                .collect();
+                            let line = Line::new(coords);
+                            geojson::Geometry::new(line.to_geojson())
+                        }
+                        geo::Geometry::Polygon(poly) => {
+                            let exterior = Line::new(
+                                poly.exterior()
+                                    .coords_iter()
+                                    .map(|coord| Coordinate::new(coord.x, coord.y))
+                                    .collect(),
+                            );
+                            let interiors = poly
+                                .interiors()
+                                .iter()
+                                .map(|ring| {
+                                    Line::new(
+                                        ring.coords_iter()
+                                            .map(|coord| Coordinate::new(coord.x, coord.y))
+                                            .collect(),
+                                    )
+                                })
+                                .collect();
+                            let polygon = Polygon::new(exterior, interiors);
+                            geojson::Geometry::new(polygon.to_geojson())
+                        }
+                        geo::Geometry::MultiPoint(mp) => {
+                            let coords = mp.iter().map(|p| vec![p.x(), p.y()]).collect();
+                            geojson::Geometry::new(geojson::Value::MultiPoint(coords))
+                        }
+                        geo::Geometry::MultiLineString(mls) => {
+                            let lines = mls
+                                .iter()
+                                .map(|ls| {
+                                    ls.coords_iter()
+                                        .map(|coord| vec![coord.x, coord.y])
+                                        .collect()
+                                })
+                                .collect();
+                            geojson::Geometry::new(geojson::Value::MultiLineString(lines))
+                        }
+                        geo::Geometry::MultiPolygon(mp) => {
+                            let polygons = mp
+                                .iter()
+                                .map(|poly| {
+                                    let mut rings = vec![
+                                        poly.exterior()
+                                            .coords_iter()
+                                            .map(|coord| vec![coord.x, coord.y])
+                                            .collect(),
+                                    ];
+                                    rings.extend(poly.interiors().iter().map(|ring| {
+                                        ring.coords_iter()
+                                            .map(|coord| vec![coord.x, coord.y])
+                                            .collect()
+                                    }));
+                                    rings
+                                })
+                                .collect();
+                            geojson::Geometry::new(geojson::Value::MultiPolygon(polygons))
+                        }
+                        geo::Geometry::GeometryCollection(_) => {
+                            // Nested geometry collections are not supported in GeoJSON
+                            panic!("Nested geometry collections are not supported")
+                        }
+                        geo::Geometry::Line(_line) => todo!(),
+                        geo::Geometry::Rect(_rect) => todo!(),
+                        geo::Geometry::Triangle(_triangle) => todo!(),
+                    })
+                    .collect();
+                geojson::Geometry::new(geojson::Value::GeometryCollection(geometries))
+            }
         }
     }
 }
@@ -204,7 +318,29 @@ impl GeometryProcessor {
                     .collect();
                 convert_multi_polygon(polys, &self.config)
             }
-            geojson::Value::GeometryCollection(_items) => todo!(),
+            geojson::Value::GeometryCollection(items) => {
+                let mut geometries = Vec::with_capacity(items.len());
+                for item in items {
+                    let processor = GeometryProcessor::new(item.clone(), self.config.clone());
+                    let processed = processor.convert()?;
+                    geometries.push(match processed {
+                        ProcessedGeometry::Point(p) => geo::Geometry::Point(p),
+                        ProcessedGeometry::LineString(ls) => geo::Geometry::LineString(ls),
+                        ProcessedGeometry::Polygon(p) => geo::Geometry::Polygon(p),
+                        ProcessedGeometry::MultiPoint(mp) => geo::Geometry::MultiPoint(mp),
+                        ProcessedGeometry::MultiLineString(mls) => {
+                            geo::Geometry::MultiLineString(mls)
+                        }
+                        ProcessedGeometry::MultiPolygon(mp) => geo::Geometry::MultiPolygon(mp),
+                        ProcessedGeometry::GeometryCollection(gc) => {
+                            geo::Geometry::GeometryCollection(gc)
+                        }
+                    });
+                }
+                Ok(ProcessedGeometry::GeometryCollection(
+                    GeometryCollection::new_from(geometries),
+                ))
+            }
         }
     }
 }

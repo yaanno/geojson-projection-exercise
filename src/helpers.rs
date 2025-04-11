@@ -185,9 +185,37 @@ impl ProcessedGeometry {
                             // Nested geometry collections are not supported in GeoJSON
                             panic!("Nested geometry collections are not supported")
                         }
-                        geo::Geometry::Line(_line) => todo!(),
-                        geo::Geometry::Rect(_rect) => todo!(),
-                        geo::Geometry::Triangle(_triangle) => todo!(),
+                        geo::Geometry::Line(line) => {
+                            let coords: Vec<Coordinate> = vec![
+                                Coordinate::new(line.start.x, line.start.y),
+                                Coordinate::new(line.end.x, line.end.y),
+                            ];
+                            let line = Line::new(coords);
+                            geojson::Geometry::new(line.to_geojson())
+                        }
+                        geo::Geometry::Rect(rect) => {
+                            let coords: Vec<Coordinate> = vec![
+                                Coordinate::new(rect.min().x, rect.min().y),
+                                Coordinate::new(rect.max().x, rect.min().y),
+                                Coordinate::new(rect.max().x, rect.max().y),
+                                Coordinate::new(rect.min().x, rect.max().y),
+                                Coordinate::new(rect.min().x, rect.min().y), // Close the polygon
+                            ];
+                            let line = Line::new(coords);
+                            let polygon = Polygon::new(line, vec![]);
+                            geojson::Geometry::new(polygon.to_geojson())
+                        }
+                        geo::Geometry::Triangle(triangle) => {
+                            let coords: Vec<Coordinate> = vec![
+                                Coordinate::new(triangle.0.x, triangle.0.y),
+                                Coordinate::new(triangle.1.x, triangle.1.y),
+                                Coordinate::new(triangle.2.x, triangle.2.y),
+                                Coordinate::new(triangle.0.x, triangle.0.y), // Close the polygon
+                            ];
+                            let line = Line::new(coords);
+                            let polygon = Polygon::new(line, vec![]);
+                            geojson::Geometry::new(polygon.to_geojson())
+                        }
                     })
                     .collect();
                 geojson::Geometry::new(geojson::Value::GeometryCollection(geometries))

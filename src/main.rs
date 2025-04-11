@@ -6,6 +6,66 @@ use crate::helpers::process_feature_collection;
 use helpers::ProjectionError;
 use serde_json::json;
 
+fn coordinate_examples() {
+    println!("\n--- Coordinate Examples ---");
+
+    // 1. Creating coordinates in different ways
+    let our_coord = Coordinate::new(13.377, 52.518);
+    let geo_coord = geo::Coord {
+        x: 13.377,
+        y: 52.518,
+    };
+    println!("Our Coordinate: {:?}", our_coord);
+    println!("geo::Coord: {:?}", geo_coord);
+
+    // 2. Converting between types
+    let geo_point = geo::Point::new(13.377, 52.518);
+    let our_coord_from_point = Coordinate::from(geo_point);
+    let geo_point_from_our = geo::Point::from(our_coord);
+    println!("Our Coordinate from geo::Point: {:?}", our_coord_from_point);
+    println!("geo::Point from our Coordinate: {:?}", geo_point_from_our);
+
+    // 3. Working with collections
+    let coords = vec![
+        Coordinate::new(13.377, 52.518),
+        Coordinate::new(13.379, 52.517),
+        Coordinate::new(13.381, 52.516),
+    ];
+
+    // Convert to geo::Point collection
+    let geo_points = Coordinate::to_points(&coords);
+    println!("Converted to geo::Points: {:?}", geo_points);
+
+    // Convert to GeoJSON format
+    let geojson_coords = Coordinate::to_vecs(&coords);
+    println!("Converted to GeoJSON format: {:?}", geojson_coords);
+
+    // 4. Creating geometries
+    let line = Line::new(coords.clone());
+    let geo_line_string = line.to_geo();
+    println!(
+        "Our Line converted to geo::LineString: {:?}",
+        geo_line_string
+    );
+
+    // 5. Working with geo::Coord in geo types
+    let geo_line = geo::Line::new(
+        geo::Coord {
+            x: 13.377,
+            y: 52.518,
+        },
+        geo::Coord {
+            x: 13.379,
+            y: 52.517,
+        },
+    );
+    println!("geo::Line using geo::Coord: {:?}", geo_line);
+
+    // 6. Converting geo::Coord to our Coordinate
+    let our_coord_from_geo = Coordinate::new(geo_line.start.x, geo_line.start.y);
+    println!("Our Coordinate from geo::Coord: {:?}", our_coord_from_geo);
+}
+
 fn main() -> Result<(), ProjectionError> {
     // convert point to projected
     let point = Coordinate::new(13.377, 52.518);
@@ -96,5 +156,9 @@ fn main() -> Result<(), ProjectionError> {
         "--- Feature collection example: {:?}",
         feature_collection_example
     );
+
+    // Add coordinate examples
+    coordinate_examples();
+
     Ok(())
 }

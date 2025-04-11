@@ -247,7 +247,7 @@ impl Default for TransformerConfig {
     fn default() -> Self {
         Self {
             from: "EPSG:4326".to_string(),
-            to: "EPSG:25832".to_string(),
+            to: "EPSG:3857".to_string(),
             transformer: None,
         }
     }
@@ -452,9 +452,14 @@ pub fn convert_multi_point(
 /// * `ProcessedGeometry::Point` - A projected point
 pub fn convert_point(
     point: Coordinate,
-    config: &mut TransformerConfig, // Changed to mutable reference
+    config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let transformer = config.get_transformer()?; // Now returns a reference
+    if point.x.is_nan() || point.y.is_nan() {
+        return Err(ProjectionError::InvalidCoordinates(
+            "Invalid coordinates: NaN values".to_string(),
+        ));
+    }
+    let transformer = config.get_transformer()?;
     let geo_point = Point::new(point.x, point.y);
     let projected = transformer.convert(geo_point)?;
     Ok(ProcessedGeometry::Point(projected.into()))

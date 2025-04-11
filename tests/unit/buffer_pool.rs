@@ -1,38 +1,8 @@
 use geo::Point;
-use proj_exercise_simple::Coordinate;
-use std::collections::VecDeque;
-
-#[derive(Debug)]
-struct CoordinateBufferPool {
-    point_buffers: VecDeque<Vec<Point<f64>>>,
-    line_buffers: VecDeque<Vec<Coordinate>>,
-}
-
-impl CoordinateBufferPool {
-    fn new() -> Self {
-        Self {
-            point_buffers: VecDeque::new(),
-            line_buffers: VecDeque::new(),
-        }
-    }
-
-    fn get_point_buffer(&mut self, capacity: usize) -> Vec<Point<f64>> {
-        if let Some(mut buffer) = self.point_buffers.pop_front() {
-            buffer.clear();
-            buffer.reserve(capacity);
-            buffer
-        } else {
-            Vec::with_capacity(capacity)
-        }
-    }
-
-    fn return_point_buffer(&mut self, buffer: Vec<Point<f64>>) {
-        self.point_buffers.push_back(buffer);
-    }
-}
-
+use proj_exercise_simple::CoordinateBufferPool;
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     #[test]

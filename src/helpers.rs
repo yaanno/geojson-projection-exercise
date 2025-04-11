@@ -324,7 +324,8 @@ pub fn convert_polygon(
     let transformer = config.get_transformer()?;
 
     // Convert exterior ring
-    let mut projected_exterior: Vec<Point<f64>> = Vec::new();
+    let mut projected_exterior: Vec<Point<f64>> =
+        Vec::with_capacity(polygon.exterior.coordinates.len());
     for coord in &polygon.exterior.coordinates {
         let point = Point::new(coord.x, coord.y);
         let projected = transformer.convert(point)?;
@@ -333,9 +334,9 @@ pub fn convert_polygon(
     let exterior = LineString::from(projected_exterior);
 
     // Convert interior rings
-    let mut projected_interiors: Vec<LineString<f64>> = Vec::new();
+    let mut projected_interiors: Vec<LineString<f64>> = Vec::with_capacity(polygon.interiors.len());
     for interior in &polygon.interiors {
-        let mut projected_ring: Vec<Point<f64>> = Vec::new();
+        let mut projected_ring: Vec<Point<f64>> = Vec::with_capacity(interior.coordinates.len());
         for coord in &interior.coordinates {
             let point = Point::new(coord.x, coord.y);
             let projected = transformer.convert(point)?;

@@ -18,8 +18,18 @@ pub struct CoordinateBufferPool {
     pub point_buffers: Mutex<VecDeque<Vec<Coordinate>>>,
     pub line_buffers: Mutex<VecDeque<Vec<Line>>>,
     pub polygon_buffers: Mutex<VecDeque<Vec<Line>>>,
-    pub initial_capacity: usize,
-    pub max_size: usize,
+    initial_capacity: usize,
+    max_size: usize,
+    growth_factor: f64,
+    stats: Mutex<BufferPoolStats>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct BufferPoolStats {
+    total_allocations: usize,
+    total_deallocations: usize,
+    peak_usage: usize,
+    current_usage: usize,
 }
 
 impl CoordinateBufferPool {
@@ -40,7 +50,31 @@ impl CoordinateBufferPool {
             polygon_buffers: Mutex::new(VecDeque::new()),
             initial_capacity,
             max_size,
+            growth_factor: 1.5,
+            stats: Mutex::new(BufferPoolStats::default()),
         }
+    }
+
+    fn update_stats(&self, delta: isize) -> Result<(), BufferPoolError> {
+        let mut stats = self
+            .stats
+            .lock()
+            .map_err(|e| BufferPoolError::MutexPoisoned(e.to_string()))?;
+
+        stats.current_usage = (stats.current_usage as isize + delta) as usize;
+        stats.peak_usage = stats.peak_usage.max(stats.current_usage);
+        if delta > 0 {
+            stats.total_allocations += 1;
+        } else {
+            stats.total_deallocations += 1;
+        }
+        Ok(())
+    }
+
+    fn resize_buffer<T>(&self, buffer: &mut Vec<T>, current_capacity: usize) -> usize {
+        let new_capacity = (current_capacity as f64 * self.growth_factor) as usize;
+        buffer.reserve(new_capacity - current_capacity);
+        new_capacity
     }
 
     /// Get a buffer for a point
@@ -54,12 +88,17 @@ impl CoordinateBufferPool {
             .lock()
             .map_err(|e| BufferPoolError::MutexPoisoned(e.to_string()))?;
 
-        if let Some(mut buffer) = buffers.pop_front() {
+        let buffer = if let Some(mut buffer) = buffers.pop_front() {
+            let capacity = buffer.capacity();
+            Self::resize_buffer(&self, &mut buffer, capacity);
             buffer.clear();
-            Ok(buffer)
+            buffer
         } else {
-            Ok(Vec::with_capacity(self.initial_capacity))
-        }
+            Vec::with_capacity(self.initial_capacity)
+        };
+
+        self.update_stats(1)?;
+        Ok(buffer)
     }
 
     /// Return a buffer for a point
@@ -74,11 +113,16 @@ impl CoordinateBufferPool {
             .map_err(|e| BufferPoolError::MutexPoisoned(e.to_string()))?;
 
         if buffers.len() >= self.max_size {
-            return Err(BufferPoolError::PoolFull);
+            buffer.shrink_to_fit();
+            if buffers.len() >= self.max_size {
+                self.update_stats(-1)?;
+                return Err(BufferPoolError::PoolFull);
+            }
         }
 
         buffer.clear();
         buffers.push_back(buffer);
+        self.update_stats(-1)?;
         Ok(())
     }
 
@@ -184,32 +228,10 @@ impl CoordinateBufferPool {
 
     /// Get statistics about the buffer pool
     pub fn stats(&self) -> Result<BufferPoolStats, BufferPoolError> {
-        let point_buffers = self
-            .point_buffers
+        let stats = self
+            .stats
             .lock()
             .map_err(|e| BufferPoolError::MutexPoisoned(e.to_string()))?;
-        let line_buffers = self
-            .line_buffers
-            .lock()
-            .map_err(|e| BufferPoolError::MutexPoisoned(e.to_string()))?;
-        let polygon_buffers = self
-            .polygon_buffers
-            .lock()
-            .map_err(|e| BufferPoolError::MutexPoisoned(e.to_string()))?;
-
-        Ok(BufferPoolStats {
-            point_buffers: point_buffers.len(),
-            line_buffers: line_buffers.len(),
-            polygon_buffers: polygon_buffers.len(),
-            max_size: self.max_size,
-        })
+        Ok(stats.clone())
     }
-}
-
-#[derive(Debug)]
-pub struct BufferPoolStats {
-    pub point_buffers: usize,
-    pub line_buffers: usize,
-    pub polygon_buffers: usize,
-    pub max_size: usize,
 }

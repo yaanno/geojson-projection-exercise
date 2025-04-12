@@ -35,6 +35,7 @@ mod tests {
         let buffer = pool.get_point_buffer().unwrap();
         assert_eq!(buffer.capacity(), 10);
         assert!(buffer.is_empty()); // Should be cleared
+        println!("stats: {:?}", pool.stats().unwrap());
     }
 
     #[test]
@@ -51,6 +52,7 @@ mod tests {
         // Should reuse the same buffer
         let buffer3 = pool.get_point_buffer().unwrap();
         assert_eq!(buffer3.capacity(), 10);
+        println!("stats: {:?}", pool.stats().unwrap());
     }
 
     #[test]
@@ -64,6 +66,7 @@ mod tests {
         // Request a larger buffer
         let buffer2 = pool.get_point_buffer().unwrap();
         assert_eq!(buffer2.capacity(), 10); // Capacity should remain the same
+        println!("stats: {:?}", pool.stats().unwrap());
         Ok(())
     }
 }

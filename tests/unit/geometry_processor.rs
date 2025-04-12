@@ -1,12 +1,11 @@
 use geo::Point;
 use geojson::{Geometry, Value};
-use proj_exercise_simple::helpers::{GeometryProcessor, TransformerConfig};
-
+use proj_exercise_simple::helpers::GeometryProcessor;
+use proj_exercise_simple::transformer::TransformerConfig;
 #[cfg(test)]
 mod tests {
     use proj_exercise_simple::{
-        helpers::{ProcessedGeometry, ProjectionError},
-        pool::CoordinateBufferPool,
+        error::ProjectionError, helpers::ProcessedGeometry, pool::CoordinateBufferPool,
     };
 
     use super::*;

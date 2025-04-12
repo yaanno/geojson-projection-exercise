@@ -1,26 +1,12 @@
 use crate::coordinates::{Coordinate, Line, Polygon};
+use crate::error::ProjectionError;
 use crate::pool::CoordinateBufferPool;
+use crate::transformer::TransformerConfig;
 use geo::{
     CoordsIter, GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point,
     Polygon as GeoPolygon,
 };
 use geojson::{Feature, Geometry};
-use proj::Proj;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-pub enum ProjectionError {
-    #[error("Failed to parse GeoJSON: {0}")]
-    GeoJsonParseError(#[from] geojson::Error),
-    #[error("Invalid geometry type: expected Point")]
-    InvalidGeometryType,
-    #[error("Projection error: {0}")]
-    ProjError(#[from] proj::ProjError),
-    #[error("Projection creation error: {0}")]
-    ProjCreateError(#[from] proj::ProjCreateError),
-    #[error("Invalid coordinates: {0}")]
-    InvalidCoordinates(String),
-}
 
 #[derive(Debug)]
 pub enum ProcessedGeometry {
@@ -222,76 +208,6 @@ impl ProcessedGeometry {
                 geojson::Geometry::new(geojson::Value::GeometryCollection(geometries))
             }
         }
-    }
-}
-
-#[derive(Debug)]
-pub struct TransformerConfig {
-    from: String,
-    to: String,
-    transformer: Option<Proj>,
-}
-
-impl Clone for TransformerConfig {
-    fn clone(&self) -> Self {
-        // When cloning, we don't clone the transformer
-        // It will be recreated when needed
-        Self {
-            from: self.from.clone(),
-            to: self.to.clone(),
-            transformer: None,
-        }
-    }
-}
-
-impl Default for TransformerConfig {
-    fn default() -> Self {
-        Self {
-            from: "EPSG:4326".to_string(),
-            to: "EPSG:3857".to_string(),
-            transformer: None,
-        }
-    }
-}
-
-impl TransformerConfig {
-    /// Create a new TransformerConfig
-    ///
-    /// # Arguments
-    ///
-    /// * `from` - A string, representing the source coordinate reference system
-    /// * `to` - A string, representing the target coordinate reference system
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use proj_exercise_simple::helpers::TransformerConfig;
-    /// let config = TransformerConfig::new("EPSG:4326".to_string(), "EPSG:3857".to_string());
-    /// ```
-    pub fn new(from: String, to: String) -> Self {
-        Self {
-            from,
-            to,
-            transformer: None,
-        }
-    }
-
-    /// Get a transformer
-    ///
-    /// # Returns
-    ///
-    /// * `Proj` - A transformer
-    pub fn get_transformer(&mut self) -> Result<&Proj, ProjectionError> {
-        if self.transformer.is_none() {
-            let transformer = Proj::new_known_crs(&self.from, &self.to, None)?;
-            self.transformer = Some(transformer);
-        }
-        Ok(self.transformer.as_ref().unwrap())
-    }
-
-    // Clear the cached transformer (useful if config changes)
-    pub fn clear_cache(&mut self) {
-        self.transformer = None;
     }
 }
 

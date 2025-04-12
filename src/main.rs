@@ -1,11 +1,13 @@
 pub mod conversions;
 pub mod coordinates;
+pub mod error;
 pub mod helpers;
 pub mod pool;
+pub mod transformer;
 
 use crate::coordinates::{Coordinate, Line, Polygon};
+use crate::error::ProjectionError;
 use crate::helpers::process_feature_collection;
-use helpers::ProjectionError;
 use serde_json::json;
 
 fn coordinate_examples() {

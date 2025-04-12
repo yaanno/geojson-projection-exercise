@@ -14,6 +14,17 @@ pub enum BufferPoolError {
     ProjError(#[from] proj::ProjCreateError),
 }
 
+/// A pool of coordinate buffers
+///
+/// # Fields
+///
+/// * `point_buffers` - A mutex-protected deque of point buffers
+/// * `line_buffers` - A mutex-protected deque of line buffers
+/// * `polygon_buffers` - A mutex-protected deque of polygon buffers
+/// * `initial_capacity` - The initial capacity of the buffers
+/// * `max_size` - The maximum size of the pool
+/// * `growth_factor` - The growth factor for the buffers
+/// * `stats` - Statistics about the buffer pool
 pub struct CoordinateBufferPool {
     pub point_buffers: Mutex<VecDeque<Vec<Coordinate>>>,
     pub line_buffers: Mutex<VecDeque<Vec<Line>>>,
@@ -55,6 +66,15 @@ impl CoordinateBufferPool {
         }
     }
 
+    /// Update the statistics for the buffer pool
+    ///
+    /// # Arguments
+    ///
+    /// * `delta` - The change in the number of buffers
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), BufferPoolError>` - An error if the mutex is poisoned
     fn update_stats(&self, delta: isize) -> Result<(), BufferPoolError> {
         let mut stats = self
             .stats
@@ -71,6 +91,18 @@ impl CoordinateBufferPool {
         Ok(())
     }
 
+    /// Resize a buffer
+    ///
+    /// # Arguments
+    ///
+    /// * `buffer` - The buffer to resize
+    /// * `current_capacity` - The current capacity of the buffer
+    ///
+    /// # Returns
+    ///
+    /// * `usize` - The new capacity of the buffer
+    /// * `T` - The type of the buffer
+    /// * `Result<usize, BufferPoolError>` - An error if the mutex is poisoned
     fn resize_buffer<T>(&self, buffer: &mut Vec<T>, current_capacity: usize) -> usize {
         let new_capacity = (current_capacity as f64 * self.growth_factor) as usize;
         buffer.reserve(new_capacity - current_capacity);
@@ -106,6 +138,7 @@ impl CoordinateBufferPool {
     /// # Arguments
     ///
     /// * `buffer` - The buffer to return
+    /// * `Result<(), BufferPoolError>` - An error if the mutex is poisoned
     pub fn return_point_buffer(&self, mut buffer: Vec<Coordinate>) -> Result<(), BufferPoolError> {
         let mut buffers = self
             .point_buffers
@@ -150,6 +183,7 @@ impl CoordinateBufferPool {
     /// # Arguments
     ///
     /// * `buffer` - The buffer to return
+    /// * `Result<(), BufferPoolError>` - An error if the mutex is poisoned
     pub fn return_line_buffer(&self, mut buffer: Vec<Line>) -> Result<(), BufferPoolError> {
         let mut buffers = self
             .line_buffers
@@ -189,6 +223,7 @@ impl CoordinateBufferPool {
     /// # Arguments
     ///
     /// * `buffer` - The buffer to return
+    /// * `Result<(), BufferPoolError>` - An error if the mutex is poisoned
     pub fn return_polygon_buffer(&self, mut buffer: Vec<Line>) -> Result<(), BufferPoolError> {
         let mut buffers = self
             .polygon_buffers
@@ -205,6 +240,10 @@ impl CoordinateBufferPool {
     }
 
     /// Clear all buffers in the pool
+    ///
+    /// # Returns
+    ///
+    /// * `Result<(), BufferPoolError>` - An error if the mutex is poisoned
     pub fn clear(&self) -> Result<(), BufferPoolError> {
         let mut point_buffers = self
             .point_buffers
@@ -227,6 +266,10 @@ impl CoordinateBufferPool {
     }
 
     /// Get statistics about the buffer pool
+    ///
+    /// # Returns
+    ///
+    /// * `Result<BufferPoolStats, BufferPoolError>` - Statistics about the buffer pool
     pub fn stats(&self) -> Result<BufferPoolStats, BufferPoolError> {
         let stats = self
             .stats

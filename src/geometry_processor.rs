@@ -95,6 +95,23 @@ impl PolygonProcessor {
     }
 }
 
+/// A specialized processor for polygons
+///
+/// This processor is responsible for processing polygons. It iterates over each coordinate,
+/// projecting each coordinate and constructing the resulting polygon.
+///
+/// # Arguments
+///
+/// * `config` - A mutable reference to the transformer configuration.
+/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
+///
+/// # Returns
+///
+/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
+///
+/// # Errors
+///
+/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for PolygonProcessor {
     fn process(
         &self,
@@ -168,7 +185,6 @@ impl GeometryProcessorTrait for PolygonProcessor {
     }
 }
 
-// Specialized processor for multi points
 struct MultiPointProcessor {
     coordinates: Vec<Coordinate>,
 }
@@ -179,6 +195,23 @@ impl MultiPointProcessor {
     }
 }
 
+/// A specialized processor for multi points
+///
+/// This processor is responsible for processing multi points. It iterates over each coordinate,
+/// projecting each coordinate and constructing the resulting multi point.
+///
+/// # Arguments
+///
+/// * `config` - A mutable reference to the transformer configuration.
+/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
+///
+/// # Returns
+///
+/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
+///
+/// # Errors
+///
+/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for MultiPointProcessor {
     fn process(
         &self,
@@ -205,7 +238,6 @@ impl GeometryProcessorTrait for MultiPointProcessor {
     }
 }
 
-// Specialized processor for multi line strings
 struct MultiLineStringProcessor {
     coordinates: Vec<Coordinate>,
 }
@@ -216,6 +248,23 @@ impl MultiLineStringProcessor {
     }
 }
 
+/// A specialized processor for multi line strings
+///
+/// This processor is responsible for processing multi line strings. It iterates over each coordinate,
+/// projecting each coordinate and constructing the resulting multi line string.
+///
+/// # Arguments
+///
+/// * `config` - A mutable reference to the transformer configuration.
+/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
+///
+/// # Returns
+///
+/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
+///
+/// # Errors
+///
+/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for MultiLineStringProcessor {
     fn process(
         &self,
@@ -242,7 +291,6 @@ impl GeometryProcessorTrait for MultiLineStringProcessor {
     }
 }
 
-// Specialized processor for multi polygons
 struct MultiPolygonProcessor {
     polygons: Vec<Polygon>,
 }
@@ -253,6 +301,23 @@ impl MultiPolygonProcessor {
     }
 }
 
+/// A specialized processor for multi polygons
+///
+/// This processor is responsible for processing multi polygons. It iterates over each polygon,
+/// projecting each coordinate and constructing the resulting multi polygon.
+///
+/// # Arguments
+///
+/// * `config` - A mutable reference to the transformer configuration.
+/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
+///
+/// # Returns
+///
+/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
+///
+/// # Errors
+///
+/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for MultiPolygonProcessor {
     fn process(
         &self,
@@ -340,7 +405,16 @@ impl GeometryProcessorTrait for MultiPolygonProcessor {
     }
 }
 
-// Main geometry processor that uses specialized processors
+/// Main geometry processor that uses specialized processors
+///
+/// This processor uses specialized processors for each geometry type. It validates the coordinates,
+/// and then delegates the processing to the appropriate specialized processor.
+///
+/// # Arguments
+///
+/// * `geometry` - A reference to the geometry to be processed.
+/// * `config` - A mutable reference to the transformer configuration.
+/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
 pub struct GeometryProcessor<'a> {
     geometry: &'a Geometry,
     config: &'a mut TransformerConfig,

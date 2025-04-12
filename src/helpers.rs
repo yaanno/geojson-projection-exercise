@@ -211,7 +211,8 @@ impl ProcessedGeometry {
     }
 }
 
-pub fn convert_multi_line_string(
+#[allow(dead_code)]
+fn convert_multi_line_string(
     lines: Vec<Line>,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
@@ -249,7 +250,8 @@ pub fn convert_multi_line_string(
 /// # Returns
 ///
 /// * `ProcessedGeometry::MultiPoint` - A projected multi point
-pub fn convert_multi_point(
+#[allow(dead_code)]
+fn convert_multi_point(
     points: Vec<Coordinate>,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
@@ -282,7 +284,8 @@ pub fn convert_multi_point(
 /// # Returns
 ///
 /// * `ProcessedGeometry::Point` - A projected point
-pub fn convert_point(
+#[allow(dead_code)]
+fn convert_point(
     point: Coordinate,
     config: &mut TransformerConfig,
 ) -> Result<ProcessedGeometry, ProjectionError> {
@@ -307,7 +310,7 @@ pub fn convert_point(
 /// # Returns
 ///
 /// * `ProcessedGeometry::LineString` - A projected line string
-pub fn convert_line_string(
+fn convert_line_string(
     coordinates: Vec<Coordinate>,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
@@ -341,7 +344,7 @@ pub fn convert_line_string(
 /// # Returns
 ///
 /// * `ProcessedGeometry::Polygon` - A polygon with the coordinates projected
-pub fn convert_polygon(
+fn convert_polygon(
     polygon: Polygon,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
@@ -400,7 +403,8 @@ pub fn convert_polygon(
 /// # Returns
 ///
 /// * `ProcessedGeometry::MultiPolygon` - A projected multi polygon
-pub fn convert_multi_polygon(
+#[allow(dead_code)]
+fn convert_multi_polygon(
     polygons: Vec<Polygon>,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
@@ -432,7 +436,7 @@ pub fn convert_multi_polygon(
 /// # Returns
 ///
 /// * `ProcessedGeometry` - A processed geometry
-pub fn process_feature_geometry(
+fn process_feature_geometry(
     feature: Feature,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
@@ -454,7 +458,7 @@ pub fn process_feature_geometry(
 /// # Returns
 ///
 /// * `ProcessedGeometry` - A processed geometry
-pub fn process_geometry(
+fn process_geometry(
     geometry: Geometry,
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,

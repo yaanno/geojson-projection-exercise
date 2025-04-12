@@ -370,15 +370,15 @@ pub fn convert_multi_point(
         match point {
             ProcessedGeometry::Point(p) => projected_points.push(p.into()),
             _ => {
+                buffer_pool.return_point_buffer(projected_points)?;
                 return Err(ProjectionError::InvalidCoordinates(
                     "Expected Point geometry".to_string(),
                 ));
             }
         }
     }
-    buffer_pool.return_point_buffer(projected_points.clone())?;
-    let multi_point = MultiPoint::from(projected_points);
-
+    let multi_point = MultiPoint::from(projected_points.clone());
+    buffer_pool.return_point_buffer(projected_points)?;
     Ok(ProcessedGeometry::MultiPoint(multi_point))
 }
 
@@ -482,12 +482,13 @@ pub fn convert_polygon(
             let projected = transformer.convert(point)?;
             projected_ring.push(projected.into());
         }
-        projected_interiors.push(Line::from_geo(&LineString::from(
+        let line_string = LineString::from(
             projected_ring
                 .iter()
                 .map(|c| geo::Coord::from((c.x, c.y)))
                 .collect::<Vec<_>>(),
-        )));
+        );
+        projected_interiors.push(Line::from_geo(&line_string));
         buffer_pool.return_point_buffer(projected_ring)?;
     }
 
@@ -495,6 +496,7 @@ pub fn convert_polygon(
         exterior,
         projected_interiors.iter().map(|ls| ls.to_geo()).collect(),
     );
+    buffer_pool.return_polygon_buffer(projected_interiors)?;
     Ok(ProcessedGeometry::Polygon(geo_polygon))
 }
 

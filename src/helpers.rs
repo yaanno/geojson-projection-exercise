@@ -1,7 +1,9 @@
-use crate::coordinates::{Coordinate, Line, Polygon};
-use crate::error::ProjectionError;
+use crate::coordinates::{Line, Polygon};
+use crate::geometry_processor::GeometryProcessor;
 use crate::pool::CoordinateBufferPool;
 use crate::transformer::TransformerConfig;
+use crate::{coordinates::Coordinate, error::ProjectionError};
+
 use geo::{
     CoordsIter, GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point,
     Polygon as GeoPolygon,
@@ -25,7 +27,7 @@ impl ProcessedGeometry {
     /// # Returns
     ///
     /// * `geojson::Geometry` - A geojson geometry
-    fn to_geojson_geometry(self) -> geojson::Geometry {
+    pub fn to_geojson_geometry(self) -> geojson::Geometry {
         match self {
             ProcessedGeometry::Point(point) => {
                 let coord = Coordinate::from(point);
@@ -80,12 +82,11 @@ impl ProcessedGeometry {
                 let polygons = multi_polygon
                     .iter()
                     .map(|poly| {
-                        let mut rings = vec![
-                            poly.exterior()
-                                .coords_iter()
-                                .map(|coord| vec![coord.x, coord.y])
-                                .collect(),
-                        ];
+                        let mut rings = vec![poly
+                            .exterior()
+                            .coords_iter()
+                            .map(|coord| vec![coord.x, coord.y])
+                            .collect()];
                         rings.extend(poly.interiors().iter().map(|ring| {
                             ring.coords_iter()
                                 .map(|coord| vec![coord.x, coord.y])
@@ -152,12 +153,11 @@ impl ProcessedGeometry {
                             let polygons = mp
                                 .iter()
                                 .map(|poly| {
-                                    let mut rings = vec![
-                                        poly.exterior()
-                                            .coords_iter()
-                                            .map(|coord| vec![coord.x, coord.y])
-                                            .collect(),
-                                    ];
+                                    let mut rings = vec![poly
+                                        .exterior()
+                                        .coords_iter()
+                                        .map(|coord| vec![coord.x, coord.y])
+                                        .collect()];
                                     rings.extend(poly.interiors().iter().map(|ring| {
                                         ring.coords_iter()
                                             .map(|coord| vec![coord.x, coord.y])
@@ -211,115 +211,115 @@ impl ProcessedGeometry {
     }
 }
 
-pub struct GeometryProcessor<'a> {
-    geometry: Geometry,
-    config: &'a mut TransformerConfig,
-}
+// pub struct GeometryProcessor<'a> {
+//     geometry: Geometry,
+//     config: &'a mut TransformerConfig,
+// }
 
-impl<'a> GeometryProcessor<'a> {
-    /// Create a new GeometryProcessor
-    ///
-    /// # Arguments
-    ///
-    /// * `geometry` - A geometry
-    /// * `config` - A transformer config
-    pub fn new(geometry: Geometry, config: &'a mut TransformerConfig) -> Self {
-        Self { geometry, config }
-    }
+// impl<'a> GeometryProcessor<'a> {
+//     /// Create a new GeometryProcessor
+//     ///
+//     /// # Arguments
+//     ///
+//     /// * `geometry` - A geometry
+//     /// * `config` - A transformer config
+//     pub fn new(geometry: Geometry, config: &'a mut TransformerConfig) -> Self {
+//         Self { geometry, config }
+//     }
 
-    pub fn convert(
-        &mut self,
-        buffer_pool: &mut CoordinateBufferPool,
-    ) -> Result<ProcessedGeometry, ProjectionError> {
-        match &self.geometry.value {
-            geojson::Value::Point(point) => {
-                let coord = Coordinate::new(point[0], point[1]);
-                convert_point(coord, self.config)
-            }
-            geojson::Value::LineString(line_string) => {
-                let coords = line_string
-                    .iter()
-                    .map(|p| Coordinate::new(p[0], p[1]))
-                    .collect();
-                convert_line_string(coords, self.config, buffer_pool)
-            }
-            geojson::Value::Polygon(polygon) => {
-                let exterior = polygon[0]
-                    .iter()
-                    .map(|p| Coordinate::new(p[0], p[1]))
-                    .collect();
-                let interiors = polygon[1..]
-                    .iter()
-                    .map(|ring| {
-                        Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
-                    })
-                    .collect();
-                convert_polygon(
-                    Polygon::new(Line::new(exterior), interiors),
-                    self.config,
-                    buffer_pool,
-                )
-            }
-            geojson::Value::MultiPoint(points) => {
-                let coords = points.iter().map(|p| Coordinate::new(p[0], p[1])).collect();
-                convert_multi_point(coords, self.config, buffer_pool)
-            }
-            geojson::Value::MultiLineString(line_strings) => {
-                let lines = line_strings
-                    .iter()
-                    .map(|ls| Line::new(ls.iter().map(|p| Coordinate::new(p[0], p[1])).collect()))
-                    .collect();
-                convert_multi_line_string(lines, self.config, buffer_pool)
-            }
-            geojson::Value::MultiPolygon(polygons) => {
-                let polys = polygons
-                    .iter()
-                    .map(|poly| {
-                        let exterior = Line::new(
-                            poly[0]
-                                .iter()
-                                .map(|p| Coordinate::new(p[0], p[1]))
-                                .collect(),
-                        );
-                        let interiors = poly[1..]
-                            .iter()
-                            .map(|ring| {
-                                Line::new(
-                                    ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect(),
-                                )
-                            })
-                            .collect();
-                        Polygon::new(exterior, interiors)
-                    })
-                    .collect();
-                convert_multi_polygon(polys, self.config, buffer_pool)
-            }
-            geojson::Value::GeometryCollection(items) => {
-                let mut geometries = Vec::with_capacity(items.len());
-                for item in items {
-                    let mut processor = GeometryProcessor::new(item.clone(), self.config);
-                    let processed = processor.convert(buffer_pool)?;
-                    geometries.push(match processed {
-                        ProcessedGeometry::Point(p) => geo::Geometry::Point(p),
-                        ProcessedGeometry::LineString(ls) => geo::Geometry::LineString(ls),
-                        ProcessedGeometry::Polygon(p) => geo::Geometry::Polygon(p),
-                        ProcessedGeometry::MultiPoint(mp) => geo::Geometry::MultiPoint(mp),
-                        ProcessedGeometry::MultiLineString(mls) => {
-                            geo::Geometry::MultiLineString(mls)
-                        }
-                        ProcessedGeometry::MultiPolygon(mp) => geo::Geometry::MultiPolygon(mp),
-                        ProcessedGeometry::GeometryCollection(gc) => {
-                            geo::Geometry::GeometryCollection(gc)
-                        }
-                    });
-                }
-                Ok(ProcessedGeometry::GeometryCollection(
-                    GeometryCollection::new_from(geometries),
-                ))
-            }
-        }
-    }
-}
+//     pub fn convert(
+//         &mut self,
+//         buffer_pool: &mut CoordinateBufferPool,
+//     ) -> Result<ProcessedGeometry, ProjectionError> {
+//         match &self.geometry.value {
+//             geojson::Value::Point(point) => {
+//                 let coord = Coordinate::new(point[0], point[1]);
+//                 convert_point(coord, self.config)
+//             }
+//             geojson::Value::LineString(line_string) => {
+//                 let coords = line_string
+//                     .iter()
+//                     .map(|p| Coordinate::new(p[0], p[1]))
+//                     .collect();
+//                 convert_line_string(coords, self.config, buffer_pool)
+//             }
+//             geojson::Value::Polygon(polygon) => {
+//                 let exterior = polygon[0]
+//                     .iter()
+//                     .map(|p| Coordinate::new(p[0], p[1]))
+//                     .collect();
+//                 let interiors = polygon[1..]
+//                     .iter()
+//                     .map(|ring| {
+//                         Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
+//                     })
+//                     .collect();
+//                 convert_polygon(
+//                     Polygon::new(Line::new(exterior), interiors),
+//                     self.config,
+//                     buffer_pool,
+//                 )
+//             }
+//             geojson::Value::MultiPoint(points) => {
+//                 let coords = points.iter().map(|p| Coordinate::new(p[0], p[1])).collect();
+//                 convert_multi_point(coords, self.config, buffer_pool)
+//             }
+//             geojson::Value::MultiLineString(line_strings) => {
+//                 let lines = line_strings
+//                     .iter()
+//                     .map(|ls| Line::new(ls.iter().map(|p| Coordinate::new(p[0], p[1])).collect()))
+//                     .collect();
+//                 convert_multi_line_string(lines, self.config, buffer_pool)
+//             }
+//             geojson::Value::MultiPolygon(polygons) => {
+//                 let polys = polygons
+//                     .iter()
+//                     .map(|poly| {
+//                         let exterior = Line::new(
+//                             poly[0]
+//                                 .iter()
+//                                 .map(|p| Coordinate::new(p[0], p[1]))
+//                                 .collect(),
+//                         );
+//                         let interiors = poly[1..]
+//                             .iter()
+//                             .map(|ring| {
+//                                 Line::new(
+//                                     ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect(),
+//                                 )
+//                             })
+//                             .collect();
+//                         Polygon::new(exterior, interiors)
+//                     })
+//                     .collect();
+//                 convert_multi_polygon(polys, self.config, buffer_pool)
+//             }
+//             geojson::Value::GeometryCollection(items) => {
+//                 let mut geometries = Vec::with_capacity(items.len());
+//                 for item in items {
+//                     let mut processor = GeometryProcessor::new(item.clone(), self.config);
+//                     let processed = processor.convert(buffer_pool)?;
+//                     geometries.push(match processed {
+//                         ProcessedGeometry::Point(p) => geo::Geometry::Point(p),
+//                         ProcessedGeometry::LineString(ls) => geo::Geometry::LineString(ls),
+//                         ProcessedGeometry::Polygon(p) => geo::Geometry::Polygon(p),
+//                         ProcessedGeometry::MultiPoint(mp) => geo::Geometry::MultiPoint(mp),
+//                         ProcessedGeometry::MultiLineString(mls) => {
+//                             geo::Geometry::MultiLineString(mls)
+//                         }
+//                         ProcessedGeometry::MultiPolygon(mp) => geo::Geometry::MultiPolygon(mp),
+//                         ProcessedGeometry::GeometryCollection(gc) => {
+//                             geo::Geometry::GeometryCollection(gc)
+//                         }
+//                     });
+//                 }
+//                 Ok(ProcessedGeometry::GeometryCollection(
+//                     GeometryCollection::new_from(geometries),
+//                 ))
+//             }
+//         }
+//     }
+// }
 
 pub fn convert_multi_line_string(
     lines: Vec<Line>,
@@ -569,8 +569,8 @@ pub fn process_geometry(
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let mut processor = GeometryProcessor::new(geometry, config);
-    processor.convert(buffer_pool)
+    let mut processor = GeometryProcessor::new(&geometry, config);
+    processor.process(buffer_pool)
 }
 
 /// Process a feature collection

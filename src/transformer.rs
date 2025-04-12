@@ -17,6 +17,7 @@ pub struct TransformerConfig {
     from: String,
     to: String,
     transformer: Arc<Mutex<Option<Arc<Proj>>>>,
+    simplification_epsilon: Option<f64>,
 }
 
 impl Default for TransformerConfig {
@@ -48,6 +49,7 @@ impl TransformerConfig {
             from,
             to,
             transformer: Arc::new(Mutex::new(None)),
+            simplification_epsilon: None,
         })
     }
 
@@ -117,6 +119,11 @@ impl TransformerConfig {
             .lock()
             .map_err(|e| TransformerError::MutexPoisoned(e.to_string()))?
             .is_some())
+    }
+
+    pub fn with_simplification(mut self, epsilon: f64) -> Self {
+        self.simplification_epsilon = Some(epsilon);
+        self
     }
 }
 

@@ -61,14 +61,16 @@ impl GeometryProcessorTrait for LineStringProcessor {
         projected_coords.reserve(self.coordinates.len());
 
         // Process coordinates in batches of 1000
+        let mut batch_buffer = Vec::with_capacity(1000);
         for chunk in self.coordinates.chunks(1000) {
-            let mut batch: Vec<Coordinate> = Vec::with_capacity(chunk.len());
+            batch_buffer.clear();
+            batch_buffer.reserve(chunk.len());
             for coord in chunk {
                 let point = Point::new(coord.x, coord.y);
                 let projected = transformer.convert(point)?;
-                batch.push(projected.into());
+                batch_buffer.push(projected.into());
             }
-            projected_coords.extend(batch);
+            projected_coords.extend_from_slice(&batch_buffer);
         }
 
         let line_string = LineString::from(
@@ -106,14 +108,16 @@ impl GeometryProcessorTrait for PolygonProcessor {
         projected_exterior.clear();
         projected_exterior.reserve(self.polygon.exterior.coordinates.len());
 
+        let mut batch_buffer = Vec::with_capacity(1000);
         for chunk in self.polygon.exterior.coordinates.chunks(1000) {
-            let mut batch: Vec<Coordinate> = Vec::with_capacity(chunk.len());
+            batch_buffer.clear();
+            batch_buffer.reserve(chunk.len());
             for coord in chunk {
                 let point = Point::new(coord.x, coord.y);
                 let projected = transformer.convert(point)?;
-                batch.push(projected.into());
+                batch_buffer.push(projected.into());
             }
-            projected_exterior.extend(batch);
+            projected_exterior.extend_from_slice(&batch_buffer);
         }
 
         let exterior = LineString::from(
@@ -135,13 +139,14 @@ impl GeometryProcessorTrait for PolygonProcessor {
             ring_buffer.reserve(interior.coordinates.len());
 
             for chunk in interior.coordinates.chunks(1000) {
-                let mut batch: Vec<Coordinate> = Vec::with_capacity(chunk.len());
+                batch_buffer.clear();
+                batch_buffer.reserve(chunk.len());
                 for coord in chunk {
                     let point = Point::new(coord.x, coord.y);
                     let projected = transformer.convert(point)?;
-                    batch.push(projected.into());
+                    batch_buffer.push(projected.into());
                 }
-                ring_buffer.extend(batch);
+                ring_buffer.extend_from_slice(&batch_buffer);
             }
 
             let line_string = LineString::from(
@@ -239,12 +244,12 @@ impl GeometryProcessorTrait for MultiLineStringProcessor {
 
 // Specialized processor for multi polygons
 struct MultiPolygonProcessor {
-    coordinates: Vec<Coordinate>,
+    polygons: Vec<Polygon>,
 }
 
 impl MultiPolygonProcessor {
-    fn new(coordinates: Vec<Coordinate>) -> Self {
-        Self { coordinates }
+    fn new(polygons: Vec<Polygon>) -> Self {
+        Self { polygons }
     }
 }
 
@@ -255,19 +260,82 @@ impl GeometryProcessorTrait for MultiPolygonProcessor {
         buffer_pool: &mut CoordinateBufferPool,
     ) -> Result<ProcessedGeometry, ProjectionError> {
         let transformer = config.get_transformer()?;
-        let mut projected_coords = buffer_pool.get_point_buffer()?;
+        let mut projected_polygons = buffer_pool.get_polygon_buffer()?;
+        projected_polygons.clear();
+        projected_polygons.reserve(self.polygons.len());
 
-        for coord in &self.coordinates {
-            let point = Point::new(coord.x, coord.y);
-            let projected = transformer.convert(point)?;
-            projected_coords.push(projected.into());
+        let mut batch_buffer = Vec::with_capacity(1000);
+        let mut ring_buffer = buffer_pool.get_point_buffer()?;
+        let mut projected_exterior = buffer_pool.get_point_buffer()?;
+
+        for polygon in &self.polygons {
+            // Process exterior ring
+            projected_exterior.clear();
+            projected_exterior.reserve(polygon.exterior.coordinates.len());
+
+            for chunk in polygon.exterior.coordinates.chunks(1000) {
+                batch_buffer.clear();
+                batch_buffer.reserve(chunk.len());
+                for coord in chunk {
+                    let point = Point::new(coord.x, coord.y);
+                    let projected = transformer.convert(point)?;
+                    batch_buffer.push(projected.into());
+                }
+                projected_exterior.extend_from_slice(&batch_buffer);
+            }
+
+            let exterior = LineString::from(
+                projected_exterior
+                    .iter()
+                    .map(|c| geo::Coord::from((c.x, c.y)))
+                    .collect::<Vec<_>>(),
+            );
+
+            // Process interior rings
+            let mut projected_interiors = Vec::new();
+            projected_interiors.reserve(polygon.interiors.len());
+
+            for interior in &polygon.interiors {
+                ring_buffer.clear();
+                ring_buffer.reserve(interior.coordinates.len());
+
+                for chunk in interior.coordinates.chunks(1000) {
+                    batch_buffer.clear();
+                    batch_buffer.reserve(chunk.len());
+                    for coord in chunk {
+                        let point = Point::new(coord.x, coord.y);
+                        let projected = transformer.convert(point)?;
+                        batch_buffer.push(projected.into());
+                    }
+                    ring_buffer.extend_from_slice(&batch_buffer);
+                }
+
+                let line_string = LineString::from(
+                    ring_buffer
+                        .iter()
+                        .map(|c| geo::Coord::from((c.x, c.y)))
+                        .collect::<Vec<_>>(),
+                );
+                projected_interiors.push(Line::from_geo(&line_string));
+            }
+
+            let geo_polygon = GeoPolygon::new(
+                exterior,
+                projected_interiors.iter().map(|ls| ls.to_geo()).collect(),
+            );
+            projected_polygons.push(Line::from_geo(&geo_polygon.exterior()));
         }
-        buffer_pool.return_point_buffer(projected_coords)?;
 
-        let multi_polygon = MultiPolygon::from(vec![GeoPolygon::new(
-            LineString::from(vec![geo::Coord::from((0.0, 0.0))]),
-            vec![],
-        )]);
+        buffer_pool.return_point_buffer(ring_buffer)?;
+        buffer_pool.return_point_buffer(projected_exterior)?;
+
+        let multi_polygon = MultiPolygon::from(
+            projected_polygons
+                .iter()
+                .map(|ls| GeoPolygon::new(ls.to_geo(), vec![]))
+                .collect::<Vec<_>>(),
+        );
+        buffer_pool.return_polygon_buffer(projected_polygons)?;
         Ok(ProcessedGeometry::MultiPolygon(multi_polygon))
     }
 }
@@ -359,21 +427,21 @@ impl<'a> GeometryProcessor<'a> {
                 processor.process(self.config, buffer_pool)
             }
             geojson::Value::MultiPolygon(polygons) => {
+                let mut processed_polygons = Vec::new();
                 for polygon in polygons {
-                    for ring in polygon {
-                        for point in ring {
-                            Self::validate_coordinate(point[0], point[1])?;
-                        }
-                    }
+                    let exterior = polygon[0]
+                        .iter()
+                        .map(|p| Coordinate::new(p[0], p[1]))
+                        .collect();
+                    let interiors = polygon[1..]
+                        .iter()
+                        .map(|ring| {
+                            Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
+                        })
+                        .collect();
+                    processed_polygons.push(Polygon::new(Line::new(exterior), interiors));
                 }
-                let coords = polygons
-                    .iter()
-                    .flat_map(|poly| {
-                        poly.iter()
-                            .flat_map(|ring| ring.iter().map(|p| Coordinate::new(p[0], p[1])))
-                    })
-                    .collect();
-                let processor = MultiPolygonProcessor::new(coords);
+                let processor = MultiPolygonProcessor::new(processed_polygons);
                 processor.process(self.config, buffer_pool)
             }
             geojson::Value::GeometryCollection(geometries) => {

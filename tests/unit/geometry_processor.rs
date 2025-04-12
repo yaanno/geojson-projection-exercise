@@ -121,7 +121,8 @@ mod tests {
 
     #[test]
     fn test_coordinate_transformation() {
-        let mut config = TransformerConfig::new("EPSG:4326".to_string(), "EPSG:3857".to_string());
+        let mut config =
+            TransformerConfig::new("EPSG:4326".to_string(), "EPSG:3857".to_string()).unwrap();
 
         let point = Geometry {
             value: Value::Point(vec![0.0, 0.0]),

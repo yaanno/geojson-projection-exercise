@@ -12,4 +12,6 @@ pub enum ProjectionError {
     ProjCreateError(#[from] proj::ProjCreateError),
     #[error("Invalid coordinates: {0}")]
     InvalidCoordinates(String),
+    #[error("Transformer error: {0}")]
+    TransformerError(#[from] crate::transformer::TransformerError),
 }

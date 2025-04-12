@@ -17,7 +17,7 @@ pub struct TransformerConfig {
     from: String,
     to: String,
     transformer: Arc<Mutex<Option<Arc<Proj>>>>,
-    simplification_epsilon: Option<f64>,
+    pub simplification_epsilon: Option<f64>,
 }
 
 impl Default for TransformerConfig {

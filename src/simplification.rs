@@ -1,8 +1,43 @@
 use geo::{LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon};
-
 /// Simplifies a geometry using the Douglas-Peucker algorithm
 pub trait Simplify {
     fn simplify(&self, epsilon: f64) -> Self;
+}
+
+pub struct GeoJsonLineString(pub Vec<Vec<f64>>);
+
+impl Simplify for GeoJsonLineString {
+    fn simplify(&self, epsilon: f64) -> Self {
+        // Convert GeoJSON coordinates to geo::LineString
+        let coords: Vec<geo::Coord<f64>> = self
+            .0
+            .iter()
+            .map(|p| geo::coord! { x: p[0], y: p[1] })
+            .collect();
+
+        let line_string = LineString::new(coords);
+
+        // Apply simplification
+        let simplified = line_string.simplify(epsilon);
+
+        // Convert back to GeoJSON format
+        let simplified_coords = simplified.coords().map(|c| vec![c.x, c.y]).collect();
+
+        GeoJsonLineString(simplified_coords)
+    }
+}
+
+// Convenience conversion traits
+impl From<Vec<Vec<f64>>> for GeoJsonLineString {
+    fn from(coords: Vec<Vec<f64>>) -> Self {
+        GeoJsonLineString(coords)
+    }
+}
+
+impl From<GeoJsonLineString> for Vec<Vec<f64>> {
+    fn from(line_string: GeoJsonLineString) -> Self {
+        line_string.0
+    }
 }
 
 impl Simplify for Point {
@@ -301,5 +336,36 @@ mod tests {
         ]);
         let simplified = line.simplify(-1.0);
         assert_eq!(line, simplified);
+    }
+
+    #[test]
+    fn test_geojson_line_string_simplification() {
+        let coords = vec![
+            vec![0.0, 0.0],
+            vec![1.0, 0.1], // This point should be removed with sufficient epsilon
+            vec![2.0, 0.0],
+            vec![3.0, 0.1], // This point should be removed with sufficient epsilon
+            vec![4.0, 0.0],
+        ];
+
+        let line_string = GeoJsonLineString(coords);
+
+        // With small epsilon, should keep most points
+        let simplified = line_string.simplify(0.05);
+        assert!(simplified.0.len() > 2);
+
+        // With larger epsilon, should remove intermediate points
+        let simplified = line_string.simplify(0.2);
+        assert_eq!(simplified.0, vec![vec![0.0, 0.0], vec![4.0, 0.0],]);
+    }
+
+    #[test]
+    fn test_geojson_line_string_zero_epsilon() {
+        let coords = vec![vec![0.0, 0.0], vec![1.0, 1.0], vec![2.0, 2.0]];
+
+        let line_string = GeoJsonLineString(coords.clone());
+        let simplified = line_string.simplify(0.0);
+
+        assert_eq!(simplified.0, coords);
     }
 }

@@ -1,17 +1,24 @@
+use crate::pool::BufferPoolError;
+use crate::transformer::TransformerError;
+use geojson::Error as GeoJsonError;
+use proj::ProjCreateError;
+use proj::ProjError;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum ProjectionError {
-    #[error("Failed to parse GeoJSON: {0}")]
-    GeoJsonParseError(#[from] geojson::Error),
-    #[error("Invalid geometry type: expected Point")]
+    #[error("Invalid geometry type")]
     InvalidGeometryType,
-    #[error("Projection error: {0}")]
-    ProjError(#[from] proj::ProjError),
-    #[error("Projection creation error: {0}")]
-    ProjCreateError(#[from] proj::ProjCreateError),
     #[error("Invalid coordinates: {0}")]
     InvalidCoordinates(String),
+    #[error("Projection error: {0}")]
+    ProjError(#[from] ProjError),
+    #[error("Projection creation error: {0}")]
+    ProjCreateError(#[from] ProjCreateError),
+    #[error("GeoJSON error: {0}")]
+    GeoJsonError(#[from] GeoJsonError),
     #[error("Transformer error: {0}")]
-    TransformerError(#[from] crate::transformer::TransformerError),
+    TransformerError(#[from] TransformerError),
+    #[error("Buffer pool error: {0}")]
+    BufferPoolError(#[from] BufferPoolError),
 }

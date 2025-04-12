@@ -19,7 +19,7 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(point, &mut config);
-        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let mut buffer_pool = CoordinateBufferPool::new(10, 100);
 
         let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
@@ -42,7 +42,7 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(line_string, &mut config);
-        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let mut buffer_pool = CoordinateBufferPool::new(10, 100);
         let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
             ProcessedGeometry::LineString(ls) => {
@@ -76,7 +76,7 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(polygon, &mut config);
-        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let mut buffer_pool = CoordinateBufferPool::new(10, 100);
 
         let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
@@ -109,7 +109,7 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(invalid_geometry, &mut config);
-        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let mut buffer_pool = CoordinateBufferPool::new(10, 100);
 
         let result = processor.convert(&mut buffer_pool);
         assert!(result.is_err());
@@ -130,7 +130,7 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(point, &mut config);
-        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let mut buffer_pool = CoordinateBufferPool::new(10, 100);
 
         let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
@@ -153,7 +153,7 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(points, &mut config);
-        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let mut buffer_pool = CoordinateBufferPool::new(10, 100);
 
         let result = processor.convert(&mut buffer_pool).unwrap();
         match result {

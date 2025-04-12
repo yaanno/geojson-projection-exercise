@@ -326,7 +326,7 @@ pub fn convert_multi_line_string(
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let mut projected_line_strings = buffer_pool.get_line_buffer();
+    let mut projected_line_strings = buffer_pool.get_line_buffer()?;
     for line in lines {
         let line_string = convert_line_string(line.coordinates, config, buffer_pool)?;
         match line_string {
@@ -344,8 +344,8 @@ pub fn convert_multi_line_string(
             .map(|ls| ls.to_geo())
             .collect(),
     );
-    let line_strings = projected_line_strings.clone();
-    buffer_pool.return_line_buffer(line_strings);
+    let line_strings = projected_line_strings;
+    buffer_pool.return_line_buffer(line_strings)?;
     Ok(ProcessedGeometry::MultiLineString(multi_line_string))
 }
 
@@ -364,7 +364,7 @@ pub fn convert_multi_point(
     config: &mut TransformerConfig,
     buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let mut projected_points = buffer_pool.get_point_buffer();
+    let mut projected_points = buffer_pool.get_point_buffer()?;
     for point in points {
         let point = convert_point(point, config)?;
         match point {
@@ -376,7 +376,7 @@ pub fn convert_multi_point(
             }
         }
     }
-    buffer_pool.return_point_buffer(projected_points.clone());
+    buffer_pool.return_point_buffer(projected_points.clone())?;
     let multi_point = MultiPoint::from(projected_points);
 
     Ok(ProcessedGeometry::MultiPoint(multi_point))
@@ -423,7 +423,7 @@ pub fn convert_line_string(
     buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let transformer = config.get_transformer()?;
-    let mut projected_coords = buffer_pool.get_point_buffer();
+    let mut projected_coords = buffer_pool.get_point_buffer()?;
 
     for coord in coordinates {
         let point = Point::new(coord.x, coord.y);
@@ -437,7 +437,7 @@ pub fn convert_line_string(
             .map(|c| geo::Coord::from((c.x, c.y)))
             .collect::<Vec<_>>(),
     );
-    buffer_pool.return_point_buffer(projected_coords);
+    buffer_pool.return_point_buffer(projected_coords)?;
     Ok(ProcessedGeometry::LineString(line_string))
 }
 
@@ -459,24 +459,24 @@ pub fn convert_polygon(
     let transformer = config.get_transformer()?;
 
     // Convert exterior ring
-    let mut projected_exterior = buffer_pool.get_point_buffer();
+    let mut projected_exterior = buffer_pool.get_point_buffer()?;
     for coord in &polygon.exterior.coordinates {
         let point = Point::new(coord.x, coord.y);
         let projected = transformer.convert(point)?;
         projected_exterior.push(projected.into());
     }
-    buffer_pool.return_point_buffer(projected_exterior.clone());
     let exterior = LineString::from(
         projected_exterior
             .iter()
             .map(|c| geo::Coord::from((c.x, c.y)))
             .collect::<Vec<_>>(),
     );
+    buffer_pool.return_point_buffer(projected_exterior)?;
 
     // Convert interior rings
-    let mut projected_interiors = buffer_pool.get_polygon_buffer();
+    let mut projected_interiors = buffer_pool.get_polygon_buffer()?;
     for interior in &polygon.interiors {
-        let mut projected_ring = buffer_pool.get_point_buffer();
+        let mut projected_ring = buffer_pool.get_point_buffer()?;
         for coord in &interior.coordinates {
             let point = Point::new(coord.x, coord.y);
             let projected = transformer.convert(point)?;
@@ -488,7 +488,7 @@ pub fn convert_polygon(
                 .map(|c| geo::Coord::from((c.x, c.y)))
                 .collect::<Vec<_>>(),
         )));
-        buffer_pool.return_point_buffer(projected_ring);
+        buffer_pool.return_point_buffer(projected_ring)?;
     }
 
     let geo_polygon = GeoPolygon::new(
@@ -585,7 +585,7 @@ pub fn process_feature_collection(
 ) -> Result<geojson::GeoJson, ProjectionError> {
     let geojson = geojson::GeoJson::from_json_value(json_value)?;
     let mut config = TransformerConfig::default();
-    let mut buffer_pool = CoordinateBufferPool::new(10);
+    let mut buffer_pool = CoordinateBufferPool::new(10, 100);
     match geojson {
         geojson::GeoJson::Feature(feature) => {
             let geometry = process_feature_geometry(feature, &mut config, &mut buffer_pool)?;

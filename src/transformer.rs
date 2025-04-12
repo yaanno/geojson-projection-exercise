@@ -21,11 +21,8 @@ pub struct TransformerConfig {
 
 impl Default for TransformerConfig {
     fn default() -> Self {
-        Self {
-            from: "EPSG:4326".to_string(),
-            to: "EPSG:3857".to_string(),
-            transformer: Arc::new(Mutex::new(None)),
-        }
+        Self::new("EPSG:4326".to_string(), "EPSG:3857".to_string())
+            .expect("Default CRS should be valid")
     }
 }
 
@@ -44,13 +41,8 @@ impl TransformerConfig {
     /// let config = TransformerConfig::new("EPSG:4326".to_string(), "EPSG:3857".to_string()).unwrap();
     /// ```
     pub fn new(from: String, to: String) -> Result<Self, TransformerError> {
-        // Validate CRS strings
-        if !is_valid_crs(&from) || !is_valid_crs(&to) {
-            return Err(TransformerError::InvalidCrs(format!(
-                "Invalid CRS: from={}, to={}",
-                from, to
-            )));
-        }
+        validate_crs(&from)?;
+        validate_crs(&to)?;
 
         Ok(Self {
             from,
@@ -79,8 +71,7 @@ impl TransformerConfig {
             .map_err(|e| TransformerError::MutexPoisoned(e.to_string()))?;
 
         if transformer.is_none() {
-            let new_transformer = Proj::new_known_crs(&self.from, &self.to, None)
-                .map_err(|e| TransformerError::ProjError(e))?;
+            let new_transformer = Proj::new_known_crs(&self.from, &self.to, None)?;
             *transformer = Some(Arc::new(new_transformer));
         }
 
@@ -112,28 +103,33 @@ impl TransformerConfig {
     /// config.update_crs("EPSG:4326".to_string(), "EPSG:3857".to_string());
     /// ```
     pub fn update_crs(&mut self, from: String, to: String) -> Result<(), TransformerError> {
-        if !is_valid_crs(&from) || !is_valid_crs(&to) {
-            return Err(TransformerError::InvalidCrs(format!(
-                "Invalid CRS: from={}, to={}",
-                from, to
-            )));
-        }
+        validate_crs(&from)?;
+        validate_crs(&to)?;
 
         self.from = from;
         self.to = to;
         self.clear_cache()
     }
 
-    pub fn is_transformer_available(&self) -> bool {
-        self.transformer
+    pub fn is_transformer_available(&self) -> Result<bool, TransformerError> {
+        Ok(self
+            .transformer
             .lock()
-            .map(|t| t.is_some())
-            .unwrap_or(false)
+            .map_err(|e| TransformerError::MutexPoisoned(e.to_string()))?
+            .is_some())
     }
 }
 
-fn is_valid_crs(crs: &str) -> bool {
-    // Add CRS validation logic here
-    // Could check against a list of known CRS or use proj's validation
-    !crs.is_empty()
+fn validate_crs(crs: &str) -> Result<(), TransformerError> {
+    if crs.is_empty() {
+        return Err(TransformerError::InvalidCrs(
+            "CRS string cannot be empty".to_string(),
+        ));
+    }
+
+    // Try to create a temporary transformer to validate the CRS
+    let _ = Proj::new_known_crs(crs, crs, None)
+        .map_err(|e| TransformerError::InvalidCrs(format!("Invalid CRS {}: {}", crs, e)))?;
+
+    Ok(())
 }

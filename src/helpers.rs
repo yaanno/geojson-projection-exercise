@@ -1,4 +1,5 @@
 use crate::coordinates::{Coordinate, Line, Polygon};
+use crate::pool::CoordinateBufferPool;
 use geo::{
     CoordsIter, GeometryCollection, LineString, MultiLineString, MultiPoint, MultiPolygon, Point,
     Polygon as GeoPolygon,
@@ -310,7 +311,10 @@ impl<'a> GeometryProcessor<'a> {
         Self { geometry, config }
     }
 
-    pub fn convert(&mut self) -> Result<ProcessedGeometry, ProjectionError> {
+    pub fn convert(
+        &mut self,
+        buffer_pool: &mut CoordinateBufferPool,
+    ) -> Result<ProcessedGeometry, ProjectionError> {
         match &self.geometry.value {
             geojson::Value::Point(point) => {
                 let coord = Coordinate::new(point[0], point[1]);
@@ -321,7 +325,7 @@ impl<'a> GeometryProcessor<'a> {
                     .iter()
                     .map(|p| Coordinate::new(p[0], p[1]))
                     .collect();
-                convert_line_string(coords, self.config)
+                convert_line_string(coords, self.config, buffer_pool)
             }
             geojson::Value::Polygon(polygon) => {
                 let exterior = polygon[0]
@@ -334,18 +338,22 @@ impl<'a> GeometryProcessor<'a> {
                         Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
                     })
                     .collect();
-                convert_polygon(Polygon::new(Line::new(exterior), interiors), self.config)
+                convert_polygon(
+                    Polygon::new(Line::new(exterior), interiors),
+                    self.config,
+                    buffer_pool,
+                )
             }
             geojson::Value::MultiPoint(points) => {
                 let coords = points.iter().map(|p| Coordinate::new(p[0], p[1])).collect();
-                convert_multi_point(coords, self.config)
+                convert_multi_point(coords, self.config, buffer_pool)
             }
             geojson::Value::MultiLineString(line_strings) => {
                 let lines = line_strings
                     .iter()
                     .map(|ls| Line::new(ls.iter().map(|p| Coordinate::new(p[0], p[1])).collect()))
                     .collect();
-                convert_multi_line_string(lines, self.config)
+                convert_multi_line_string(lines, self.config, buffer_pool)
             }
             geojson::Value::MultiPolygon(polygons) => {
                 let polys = polygons
@@ -368,13 +376,13 @@ impl<'a> GeometryProcessor<'a> {
                         Polygon::new(exterior, interiors)
                     })
                     .collect();
-                convert_multi_polygon(polys, self.config)
+                convert_multi_polygon(polys, self.config, buffer_pool)
             }
             geojson::Value::GeometryCollection(items) => {
                 let mut geometries = Vec::with_capacity(items.len());
                 for item in items {
                     let mut processor = GeometryProcessor::new(item.clone(), self.config);
-                    let processed = processor.convert()?;
+                    let processed = processor.convert(buffer_pool)?;
                     geometries.push(match processed {
                         ProcessedGeometry::Point(p) => geo::Geometry::Point(p),
                         ProcessedGeometry::LineString(ls) => geo::Geometry::LineString(ls),
@@ -400,12 +408,13 @@ impl<'a> GeometryProcessor<'a> {
 pub fn convert_multi_line_string(
     lines: Vec<Line>,
     config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let mut projected_line_strings = Vec::with_capacity(lines.len());
+    let mut projected_line_strings = buffer_pool.get_line_buffer();
     for line in lines {
-        let line_string = convert_line_string(line.coordinates, config)?;
+        let line_string = convert_line_string(line.coordinates, config, buffer_pool)?;
         match line_string {
-            ProcessedGeometry::LineString(ls) => projected_line_strings.push(ls),
+            ProcessedGeometry::LineString(ls) => projected_line_strings.push(Line::from_geo(&ls)),
             _ => {
                 return Err(ProjectionError::InvalidCoordinates(
                     "Expected LineString geometry".to_string(),
@@ -413,7 +422,14 @@ pub fn convert_multi_line_string(
             }
         }
     }
-    let multi_line_string = MultiLineString::new(projected_line_strings);
+    let multi_line_string = MultiLineString::new(
+        projected_line_strings
+            .iter()
+            .map(|ls| ls.to_geo())
+            .collect(),
+    );
+    let line_strings = projected_line_strings.clone();
+    buffer_pool.return_line_buffer(line_strings);
     Ok(ProcessedGeometry::MultiLineString(multi_line_string))
 }
 
@@ -430,12 +446,13 @@ pub fn convert_multi_line_string(
 pub fn convert_multi_point(
     points: Vec<Coordinate>,
     config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let mut projected_points = Vec::with_capacity(points.len());
+    let mut projected_points = buffer_pool.get_point_buffer();
     for point in points {
         let point = convert_point(point, config)?;
         match point {
-            ProcessedGeometry::Point(p) => projected_points.push(p),
+            ProcessedGeometry::Point(p) => projected_points.push(p.into()),
             _ => {
                 return Err(ProjectionError::InvalidCoordinates(
                     "Expected Point geometry".to_string(),
@@ -443,7 +460,9 @@ pub fn convert_multi_point(
             }
         }
     }
+    buffer_pool.return_point_buffer(projected_points.clone());
     let multi_point = MultiPoint::from(projected_points);
+
     Ok(ProcessedGeometry::MultiPoint(multi_point))
 }
 
@@ -484,10 +503,11 @@ pub fn convert_point(
 /// * `ProcessedGeometry::LineString` - A projected line string
 pub fn convert_line_string(
     coordinates: Vec<Coordinate>,
-    config: &mut TransformerConfig, // Changed to mutable reference
+    config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
-    let transformer = config.get_transformer()?; // Now returns a reference
-    let mut projected_coords: Vec<Point<f64>> = Vec::with_capacity(coordinates.len());
+    let transformer = config.get_transformer()?;
+    let mut projected_coords = buffer_pool.get_point_buffer();
 
     for coord in coordinates {
         let point = Point::new(coord.x, coord.y);
@@ -495,7 +515,13 @@ pub fn convert_line_string(
         projected_coords.push(projected.into());
     }
 
-    let line_string = LineString::from(projected_coords);
+    let line_string = LineString::from(
+        projected_coords
+            .iter()
+            .map(|c| geo::Coord::from((c.x, c.y)))
+            .collect::<Vec<_>>(),
+    );
+    buffer_pool.return_point_buffer(projected_coords);
     Ok(ProcessedGeometry::LineString(line_string))
 }
 
@@ -512,32 +538,47 @@ pub fn convert_line_string(
 pub fn convert_polygon(
     polygon: Polygon,
     config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let transformer = config.get_transformer()?;
 
     // Convert exterior ring
-    let mut projected_exterior: Vec<Point<f64>> =
-        Vec::with_capacity(polygon.exterior.coordinates.len());
+    let mut projected_exterior = buffer_pool.get_point_buffer();
     for coord in &polygon.exterior.coordinates {
         let point = Point::new(coord.x, coord.y);
         let projected = transformer.convert(point)?;
         projected_exterior.push(projected.into());
     }
-    let exterior = LineString::from(projected_exterior);
+    buffer_pool.return_point_buffer(projected_exterior.clone());
+    let exterior = LineString::from(
+        projected_exterior
+            .iter()
+            .map(|c| geo::Coord::from((c.x, c.y)))
+            .collect::<Vec<_>>(),
+    );
 
     // Convert interior rings
-    let mut projected_interiors: Vec<LineString<f64>> = Vec::with_capacity(polygon.interiors.len());
+    let mut projected_interiors = buffer_pool.get_polygon_buffer();
     for interior in &polygon.interiors {
-        let mut projected_ring: Vec<Point<f64>> = Vec::with_capacity(interior.coordinates.len());
+        let mut projected_ring = buffer_pool.get_point_buffer();
         for coord in &interior.coordinates {
             let point = Point::new(coord.x, coord.y);
             let projected = transformer.convert(point)?;
             projected_ring.push(projected.into());
         }
-        projected_interiors.push(LineString::from(projected_ring));
+        projected_interiors.push(Line::from_geo(&LineString::from(
+            projected_ring
+                .iter()
+                .map(|c| geo::Coord::from((c.x, c.y)))
+                .collect::<Vec<_>>(),
+        )));
+        buffer_pool.return_point_buffer(projected_ring);
     }
 
-    let geo_polygon = GeoPolygon::new(exterior, projected_interiors);
+    let geo_polygon = GeoPolygon::new(
+        exterior,
+        projected_interiors.iter().map(|ls| ls.to_geo()).collect(),
+    );
     Ok(ProcessedGeometry::Polygon(geo_polygon))
 }
 
@@ -554,10 +595,11 @@ pub fn convert_polygon(
 pub fn convert_multi_polygon(
     polygons: Vec<Polygon>,
     config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let mut projected_polygons = Vec::with_capacity(polygons.len());
     for polygon in polygons {
-        let polygon = convert_polygon(polygon, config)?;
+        let polygon = convert_polygon(polygon, config, buffer_pool)?;
         match polygon {
             ProcessedGeometry::Polygon(p) => projected_polygons.push(p),
             _ => {
@@ -585,9 +627,10 @@ pub fn convert_multi_polygon(
 pub fn process_feature_geometry(
     feature: Feature,
     config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     if let Some(geometry) = feature.geometry {
-        process_geometry(geometry, config)
+        process_geometry(geometry, config, buffer_pool)
     } else {
         Err(ProjectionError::InvalidGeometryType)
     }
@@ -606,9 +649,10 @@ pub fn process_feature_geometry(
 pub fn process_geometry(
     geometry: Geometry,
     config: &mut TransformerConfig,
+    buffer_pool: &mut CoordinateBufferPool,
 ) -> Result<ProcessedGeometry, ProjectionError> {
     let mut processor = GeometryProcessor::new(geometry, config);
-    processor.convert()
+    processor.convert(buffer_pool)
 }
 
 /// Process a feature collection
@@ -625,9 +669,10 @@ pub fn process_feature_collection(
 ) -> Result<geojson::GeoJson, ProjectionError> {
     let geojson = geojson::GeoJson::from_json_value(json_value)?;
     let mut config = TransformerConfig::default();
+    let mut buffer_pool = CoordinateBufferPool::new(10);
     match geojson {
         geojson::GeoJson::Feature(feature) => {
-            let geometry = process_feature_geometry(feature, &mut config)?;
+            let geometry = process_feature_geometry(feature, &mut config, &mut buffer_pool)?;
             Ok(geojson::GeoJson::Feature(geojson::Feature {
                 bbox: None,
                 geometry: Some(geometry.to_geojson_geometry()),
@@ -639,7 +684,7 @@ pub fn process_feature_collection(
         geojson::GeoJson::FeatureCollection(feature_collection) => {
             let mut features = Vec::with_capacity(feature_collection.features.len());
             for feature in feature_collection.features {
-                let geometry = process_feature_geometry(feature, &mut config)?;
+                let geometry = process_feature_geometry(feature, &mut config, &mut buffer_pool)?;
                 features.push(geojson::Feature {
                     bbox: None,
                     geometry: Some(geometry.to_geojson_geometry()),
@@ -657,7 +702,7 @@ pub fn process_feature_collection(
             ))
         }
         geojson::GeoJson::Geometry(geometry) => {
-            let geometry = process_geometry(geometry, &mut config)?;
+            let geometry = process_geometry(geometry, &mut config, &mut buffer_pool)?;
             Ok(geojson::GeoJson::Geometry(geometry.to_geojson_geometry()))
         }
     }

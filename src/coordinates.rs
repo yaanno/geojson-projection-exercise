@@ -74,6 +74,10 @@ impl Coordinate {
     pub fn to_vecs(coords: &[Coordinate]) -> Vec<Vec<f64>> {
         coords.iter().map(|c| vec![c.x, c.y]).collect()
     }
+
+    pub fn to_vec(&self) -> Vec<f64> {
+        vec![self.x, self.y]
+    }
 }
 
 impl From<geo::Point<f64>> for Coordinate {
@@ -200,7 +204,22 @@ impl Line {
     /// let geo = line.to_geo();
     /// ```
     pub fn to_geo(&self) -> geo::LineString<f64> {
-        geo::LineString::from(Coordinate::to_points(&self.coordinates))
+        geo::LineString::from(
+            self.coordinates
+                .iter()
+                .map(|c| geo::Coord::from((c.x, c.y)))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    pub fn from_geo(ls: &geo::LineString<f64>) -> Self {
+        Self {
+            coordinates: ls.coords().map(|c| Coordinate::new(c.x, c.y)).collect(),
+        }
+    }
+
+    pub fn to_vecs(&self) -> Vec<Vec<f64>> {
+        self.coordinates.iter().map(|c| c.to_vec()).collect()
     }
 }
 
@@ -348,9 +367,14 @@ impl FromIterator<Line> for Polygon {
     /// let polygon = Polygon::from_iter(vec![line]);
     /// ```
     fn from_iter<T: IntoIterator<Item = Line>>(iter: T) -> Self {
-        let mut lines = iter.into_iter().collect::<Vec<_>>();
+        let mut lines: Vec<Line> = iter.into_iter().collect();
+        if lines.is_empty() {
+            panic!("Cannot create polygon from empty iterator");
+        }
         let exterior = lines.remove(0);
-        let interiors = lines;
-        Self::new(exterior, interiors)
+        Self {
+            exterior,
+            interiors: lines,
+        }
     }
 }

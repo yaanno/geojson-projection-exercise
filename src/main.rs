@@ -1,5 +1,7 @@
+pub mod conversions;
 pub mod coordinates;
 pub mod helpers;
+pub mod pool;
 
 use crate::coordinates::{Coordinate, Line, Polygon};
 use crate::helpers::process_feature_collection;

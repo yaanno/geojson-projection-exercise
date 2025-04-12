@@ -1,12 +1,14 @@
 use geo::Point;
 use geojson::{Geometry, Value};
-use proj_exercise_simple::{
-    GeometryProcessor, TransformerConfig,
-    helpers::{ProcessedGeometry, ProjectionError},
-};
+use proj_exercise_simple::helpers::{GeometryProcessor, TransformerConfig};
 
 #[cfg(test)]
 mod tests {
+    use proj_exercise_simple::{
+        helpers::{ProcessedGeometry, ProjectionError},
+        pool::CoordinateBufferPool,
+    };
+
     use super::*;
 
     #[test]
@@ -18,8 +20,9 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(point, &mut config);
+        let mut buffer_pool = CoordinateBufferPool::new(10);
 
-        let result = processor.convert().unwrap();
+        let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
             ProcessedGeometry::Point(p) => {
                 // Expected Web Mercator coordinates for (1,2)
@@ -40,8 +43,8 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(line_string, &mut config);
-
-        let result = processor.convert().unwrap();
+        let mut buffer_pool = CoordinateBufferPool::new(10);
+        let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
             ProcessedGeometry::LineString(ls) => {
                 assert_eq!(ls.points().count(), 3);
@@ -74,8 +77,9 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(polygon, &mut config);
+        let mut buffer_pool = CoordinateBufferPool::new(10);
 
-        let result = processor.convert().unwrap();
+        let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
             ProcessedGeometry::Polygon(p) => {
                 assert_eq!(p.exterior().points().count(), 5);
@@ -106,8 +110,9 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(invalid_geometry, &mut config);
+        let mut buffer_pool = CoordinateBufferPool::new(10);
 
-        let result = processor.convert();
+        let result = processor.convert(&mut buffer_pool);
         assert!(result.is_err());
         match result.unwrap_err() {
             ProjectionError::InvalidCoordinates(_) => (),
@@ -125,8 +130,9 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(point, &mut config);
+        let mut buffer_pool = CoordinateBufferPool::new(10);
 
-        let result = processor.convert().unwrap();
+        let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
             ProcessedGeometry::Point(p) => {
                 // Expected Web Mercator coordinates for (0,0)
@@ -147,8 +153,9 @@ mod tests {
             foreign_members: None,
         };
         let mut processor = GeometryProcessor::new(points, &mut config);
+        let mut buffer_pool = CoordinateBufferPool::new(10);
 
-        let result = processor.convert().unwrap();
+        let result = processor.convert(&mut buffer_pool).unwrap();
         match result {
             ProcessedGeometry::MultiPoint(mp) => {
                 assert_eq!(mp.0.len(), 2);

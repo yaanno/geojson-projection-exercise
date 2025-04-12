@@ -1,6 +1,8 @@
-use proj_exercise_simple::CoordinateBufferPool;
+use proj_exercise_simple::pool::CoordinateBufferPool;
 #[cfg(test)]
 mod tests {
+
+    use geo::Point;
 
     use super::*;
 
@@ -21,10 +23,10 @@ mod tests {
         assert!(buffer.is_empty());
 
         // Add some points
-        buffer.push(1.0);
-        buffer.push(2.0);
-        buffer.push(3.0);
-        buffer.push(4.0);
+        buffer.push(Point::new(1.0, 1.0).into());
+        buffer.push(Point::new(1.0, 1.0).into());
+        buffer.push(Point::new(1.0, 1.0).into());
+        buffer.push(Point::new(1.0, 1.0).into());
 
         // Return the buffer
         pool.return_point_buffer(buffer);

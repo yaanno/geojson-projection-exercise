@@ -1,4 +1,4 @@
-use crate::coordinates::{Coordinate, Line, Polygon};
+use crate::coordinates::{Coordinate, Line, Polygon as ProjectPolygon};
 use crate::error::ProjectionError;
 use crate::helpers::ProcessedGeometry;
 use crate::pool::CoordinateBufferPool;
@@ -86,32 +86,15 @@ impl GeometryProcessorTrait for LineStringProcessor {
 
 // Specialized processor for polygons
 struct PolygonProcessor {
-    polygon: Polygon,
+    polygon: ProjectPolygon,
 }
 
 impl PolygonProcessor {
-    fn new(polygon: Polygon) -> Self {
+    fn new(polygon: ProjectPolygon) -> Self {
         Self { polygon }
     }
 }
 
-/// A specialized processor for polygons
-///
-/// This processor is responsible for processing polygons. It iterates over each coordinate,
-/// projecting each coordinate and constructing the resulting polygon.
-///
-/// # Arguments
-///
-/// * `config` - A mutable reference to the transformer configuration.
-/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
-///
-/// # Returns
-///
-/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
-///
-/// # Errors
-///
-/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for PolygonProcessor {
     fn process(
         &self,
@@ -146,10 +129,7 @@ impl GeometryProcessorTrait for PolygonProcessor {
         buffer_pool.return_point_buffer(projected_exterior)?;
 
         // Process interior rings
-        let mut projected_interiors = buffer_pool.get_polygon_buffer()?;
-        projected_interiors.clear();
-        projected_interiors.reserve(self.polygon.interiors.len());
-
+        let mut projected_interiors_geo = Vec::new();
         let mut ring_buffer = buffer_pool.get_point_buffer()?;
         for interior in &self.polygon.interiors {
             ring_buffer.clear();
@@ -172,15 +152,11 @@ impl GeometryProcessorTrait for PolygonProcessor {
                     .map(|c| geo::Coord::from((c.x, c.y)))
                     .collect::<Vec<_>>(),
             );
-            projected_interiors.push(Line::from_geo(&line_string));
+            projected_interiors_geo.push(line_string);
         }
         buffer_pool.return_point_buffer(ring_buffer)?;
 
-        let geo_polygon = GeoPolygon::new(
-            exterior,
-            projected_interiors.iter().map(|ls| ls.to_geo()).collect(),
-        );
-        buffer_pool.return_polygon_buffer(projected_interiors)?;
+        let geo_polygon = GeoPolygon::new(exterior, projected_interiors_geo);
         Ok(ProcessedGeometry::Polygon(geo_polygon))
     }
 }
@@ -195,23 +171,6 @@ impl MultiPointProcessor {
     }
 }
 
-/// A specialized processor for multi points
-///
-/// This processor is responsible for processing multi points. It iterates over each coordinate,
-/// projecting each coordinate and constructing the resulting multi point.
-///
-/// # Arguments
-///
-/// * `config` - A mutable reference to the transformer configuration.
-/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
-///
-/// # Returns
-///
-/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
-///
-/// # Errors
-///
-/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for MultiPointProcessor {
     fn process(
         &self,
@@ -239,32 +198,15 @@ impl GeometryProcessorTrait for MultiPointProcessor {
 }
 
 struct MultiLineStringProcessor {
-    coordinates: Vec<Coordinate>,
+    lines: Vec<Line>,
 }
 
 impl MultiLineStringProcessor {
-    fn new(coordinates: Vec<Coordinate>) -> Self {
-        Self { coordinates }
+    fn new(lines: Vec<Line>) -> Self {
+        Self { lines }
     }
 }
 
-/// A specialized processor for multi line strings
-///
-/// This processor is responsible for processing multi line strings. It iterates over each coordinate,
-/// projecting each coordinate and constructing the resulting multi line string.
-///
-/// # Arguments
-///
-/// * `config` - A mutable reference to the transformer configuration.
-/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
-///
-/// # Returns
-///
-/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
-///
-/// # Errors
-///
-/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for MultiLineStringProcessor {
     fn process(
         &self,
@@ -272,52 +214,51 @@ impl GeometryProcessorTrait for MultiLineStringProcessor {
         buffer_pool: &mut CoordinateBufferPool,
     ) -> Result<ProcessedGeometry, ProjectionError> {
         let transformer = config.get_transformer()?;
-        let mut projected_coords = buffer_pool.get_point_buffer()?;
+        let mut projected_lines = Vec::new();
 
-        for coord in &self.coordinates {
-            let point = Point::new(coord.x, coord.y);
-            let projected = transformer.convert(point)?;
-            projected_coords.push(projected.into());
+        for line in &self.lines {
+            let mut projected_coords = buffer_pool.get_point_buffer()?;
+            projected_coords.clear();
+            projected_coords.reserve(line.coordinates.len());
+
+            let mut batch_buffer = Vec::with_capacity(1000);
+            for chunk in line.coordinates.chunks(1000) {
+                batch_buffer.clear();
+                batch_buffer.reserve(chunk.len());
+                for coord in chunk {
+                    let point = Point::new(coord.x, coord.y);
+                    let projected = transformer.convert(point)?;
+                    batch_buffer.push(projected.into());
+                }
+                projected_coords.extend_from_slice(&batch_buffer);
+            }
+
+            let projected_line = LineString::from(
+                projected_coords
+                    .iter()
+                    .map(|c| geo::Coord::from((c.x, c.y)))
+                    .collect::<Vec<_>>(),
+            );
+            buffer_pool.return_point_buffer(projected_coords)?;
+            projected_lines.push(projected_line);
         }
-        buffer_pool.return_point_buffer(projected_coords.clone())?;
 
-        let multi_line_string = MultiLineString::from(
-            projected_coords
-                .iter()
-                .map(|c| geo::Coord::from((c.x, c.y)))
-                .collect::<Vec<_>>(),
-        );
-        Ok(ProcessedGeometry::MultiLineString(multi_line_string))
+        Ok(ProcessedGeometry::MultiLineString(MultiLineString::new(
+            projected_lines,
+        )))
     }
 }
 
 struct MultiPolygonProcessor {
-    polygons: Vec<Polygon>,
+    polygons: Vec<ProjectPolygon>,
 }
 
 impl MultiPolygonProcessor {
-    fn new(polygons: Vec<Polygon>) -> Self {
+    fn new(polygons: Vec<ProjectPolygon>) -> Self {
         Self { polygons }
     }
 }
 
-/// A specialized processor for multi polygons
-///
-/// This processor is responsible for processing multi polygons. It iterates over each polygon,
-/// projecting each coordinate and constructing the resulting multi polygon.
-///
-/// # Arguments
-///
-/// * `config` - A mutable reference to the transformer configuration.
-/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
-///
-/// # Returns
-///
-/// * `Result<ProcessedGeometry, ProjectionError>` - The processed geometry or an error if projection fails.
-///
-/// # Errors
-///
-/// * `ProjectionError` - If there is an error during projection.
 impl GeometryProcessorTrait for MultiPolygonProcessor {
     fn process(
         &self,
@@ -325,10 +266,7 @@ impl GeometryProcessorTrait for MultiPolygonProcessor {
         buffer_pool: &mut CoordinateBufferPool,
     ) -> Result<ProcessedGeometry, ProjectionError> {
         let transformer = config.get_transformer()?;
-        let mut projected_polygons = buffer_pool.get_polygon_buffer()?;
-        projected_polygons.clear();
-        projected_polygons.reserve(self.polygons.len());
-
+        let mut projected_polygons = Vec::new();
         let mut batch_buffer = Vec::with_capacity(1000);
         let mut ring_buffer = buffer_pool.get_point_buffer()?;
         let mut projected_exterior = buffer_pool.get_point_buffer()?;
@@ -357,8 +295,7 @@ impl GeometryProcessorTrait for MultiPolygonProcessor {
             );
 
             // Process interior rings
-            let mut projected_interiors = Vec::new();
-            projected_interiors.reserve(polygon.interiors.len());
+            let mut projected_interiors_geo = Vec::new();
 
             for interior in &polygon.interiors {
                 ring_buffer.clear();
@@ -381,40 +318,23 @@ impl GeometryProcessorTrait for MultiPolygonProcessor {
                         .map(|c| geo::Coord::from((c.x, c.y)))
                         .collect::<Vec<_>>(),
                 );
-                projected_interiors.push(Line::from_geo(&line_string));
+                projected_interiors_geo.push(line_string);
             }
 
-            let geo_polygon = GeoPolygon::new(
-                exterior,
-                projected_interiors.iter().map(|ls| ls.to_geo()).collect(),
-            );
-            projected_polygons.push(Line::from_geo(&geo_polygon.exterior()));
+            let geo_polygon = GeoPolygon::new(exterior, projected_interiors_geo);
+            projected_polygons.push(geo_polygon);
         }
 
         buffer_pool.return_point_buffer(ring_buffer)?;
         buffer_pool.return_point_buffer(projected_exterior)?;
 
-        let multi_polygon = MultiPolygon::from(
-            projected_polygons
-                .iter()
-                .map(|ls| GeoPolygon::new(ls.to_geo(), vec![]))
-                .collect::<Vec<_>>(),
-        );
-        buffer_pool.return_polygon_buffer(projected_polygons)?;
-        Ok(ProcessedGeometry::MultiPolygon(multi_polygon))
+        Ok(ProcessedGeometry::MultiPolygon(MultiPolygon::from(
+            projected_polygons,
+        )))
     }
 }
 
 /// Main geometry processor that uses specialized processors
-///
-/// This processor uses specialized processors for each geometry type. It validates the coordinates,
-/// and then delegates the processing to the appropriate specialized processor.
-///
-/// # Arguments
-///
-/// * `geometry` - A reference to the geometry to be processed.
-/// * `config` - A mutable reference to the transformer configuration.
-/// * `buffer_pool` - A mutable reference to the coordinate buffer pool.
 pub struct GeometryProcessor<'a> {
     geometry: &'a Geometry,
     config: &'a mut TransformerConfig,
@@ -476,7 +396,8 @@ impl<'a> GeometryProcessor<'a> {
                         Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
                     })
                     .collect();
-                let processor = PolygonProcessor::new(Polygon::new(Line::new(exterior), interiors));
+                let processor =
+                    PolygonProcessor::new(ProjectPolygon::new(Line::new(exterior), interiors));
                 processor.process(self.config, buffer_pool)
             }
             geojson::Value::MultiPoint(points) => {
@@ -488,20 +409,19 @@ impl<'a> GeometryProcessor<'a> {
                 processor.process(self.config, buffer_pool)
             }
             geojson::Value::MultiLineString(lines) => {
+                let mut project_lines = Vec::new();
                 for line in lines {
                     for point in line {
                         Self::validate_coordinate(point[0], point[1])?;
                     }
+                    let coords = line.iter().map(|p| Coordinate::new(p[0], p[1])).collect();
+                    project_lines.push(Line::new(coords));
                 }
-                let coords = lines
-                    .iter()
-                    .flat_map(|line| line.iter().map(|p| Coordinate::new(p[0], p[1])))
-                    .collect();
-                let processor = MultiLineStringProcessor::new(coords);
+                let processor = MultiLineStringProcessor::new(project_lines);
                 processor.process(self.config, buffer_pool)
             }
             geojson::Value::MultiPolygon(polygons) => {
-                let mut processed_polygons = Vec::new();
+                let mut project_polygons = Vec::new();
                 for polygon in polygons {
                     let exterior = polygon[0]
                         .iter()
@@ -513,9 +433,9 @@ impl<'a> GeometryProcessor<'a> {
                             Line::new(ring.iter().map(|p| Coordinate::new(p[0], p[1])).collect())
                         })
                         .collect();
-                    processed_polygons.push(Polygon::new(Line::new(exterior), interiors));
+                    project_polygons.push(ProjectPolygon::new(Line::new(exterior), interiors));
                 }
-                let processor = MultiPolygonProcessor::new(processed_polygons);
+                let processor = MultiPolygonProcessor::new(project_polygons);
                 processor.process(self.config, buffer_pool)
             }
             geojson::Value::GeometryCollection(geometries) => {

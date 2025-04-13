@@ -1,6 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use geojson::{Feature, FeatureCollection, GeoJson, Geometry, Value};
-use proj_exercise_simple::helpers::process_feature_collection;
+use proj_exercise_simple::{helpers::process_feature_collection, transformer::TransformerConfig};
 
 // Web Mercator valid bounds (approximately)
 const MAX_LATITUDE: f64 = 85.06;
@@ -119,7 +119,10 @@ fn benchmark_large_geometries(c: &mut Criterion) {
 
         group.bench_function(format!("LineString with {} points", size), |b| {
             b.iter(|| {
-                let result = process_feature_collection(black_box(json_value.clone()));
+                let result = process_feature_collection(
+                    black_box(json_value.clone()),
+                    &mut TransformerConfig::default(),
+                );
                 assert!(result.is_ok());
             })
         });
@@ -133,7 +136,10 @@ fn benchmark_large_geometries(c: &mut Criterion) {
 
         group.bench_function(format!("Polygon with {} points", size), |b| {
             b.iter(|| {
-                let result = process_feature_collection(black_box(json_value.clone()));
+                let result = process_feature_collection(
+                    black_box(json_value.clone()),
+                    &mut TransformerConfig::default(),
+                );
                 assert!(result.is_ok());
             })
         });
@@ -149,7 +155,10 @@ fn benchmark_large_geometries(c: &mut Criterion) {
             format!("MultiPolygon with {} polygons", num_polygons),
             |b| {
                 b.iter(|| {
-                    let result = process_feature_collection(black_box(json_value.clone()));
+                    let result = process_feature_collection(
+                        black_box(json_value.clone()),
+                        &mut TransformerConfig::default(),
+                    );
                     assert!(result.is_ok());
                 })
             },

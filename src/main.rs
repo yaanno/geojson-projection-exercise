@@ -10,6 +10,7 @@ use crate::coordinates::{Coordinate, Line, Polygon};
 use crate::error::ProjectionError;
 use crate::helpers::process_feature_collection;
 use serde_json::json;
+use transformer::TransformerConfig;
 
 fn coordinate_examples() {
     println!("\n--- Coordinate Examples ---");
@@ -82,7 +83,8 @@ fn main() -> Result<(), ProjectionError> {
             "coordinates": [point.x, point.y]
         }
     });
-    let point_example = process_feature_collection(json_value)?;
+    let mut config = TransformerConfig::default();
+    let point_example = process_feature_collection(json_value, &mut config)?;
     println!("--- Point example: {:?}", point_example);
 
     // convert line string to projected
@@ -99,7 +101,8 @@ fn main() -> Result<(), ProjectionError> {
             "coordinates": line.coordinates.iter().map(|c| vec![c.x, c.y]).collect::<Vec<_>>()
         }
     });
-    let line_string_example = process_feature_collection(json_value)?;
+    let mut config = TransformerConfig::default();
+    let line_string_example = process_feature_collection(json_value, &mut config)?;
     println!("--- Line string example: {:?}", line_string_example);
 
     // convert polygon to projected
@@ -121,7 +124,8 @@ fn main() -> Result<(), ProjectionError> {
             ]
         }
     });
-    let polygon_example = process_feature_collection(json_value)?;
+    let mut config = TransformerConfig::default();
+    let polygon_example = process_feature_collection(json_value, &mut config)?;
     println!("--- Polygon example: {:?}", polygon_example);
 
     // convert feature collection to projected
@@ -156,7 +160,8 @@ fn main() -> Result<(), ProjectionError> {
         }
       ]
     });
-    let feature_collection_example = process_feature_collection(json_value)?;
+    let mut config = TransformerConfig::default();
+    let feature_collection_example = process_feature_collection(json_value, &mut config)?;
     println!(
         "--- Feature collection example: {:?}",
         feature_collection_example

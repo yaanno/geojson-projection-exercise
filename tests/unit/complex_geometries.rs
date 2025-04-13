@@ -1,5 +1,5 @@
 use geojson::{Feature, FeatureCollection, GeoJson, Geometry, Value};
-use proj_exercise_simple::helpers::process_feature_collection;
+use proj_exercise_simple::{helpers::process_feature_collection, transformer::TransformerConfig};
 
 #[test]
 fn test_complex_feature_collection() {
@@ -108,7 +108,7 @@ fn test_complex_feature_collection() {
     let json_value = serde_json::to_value(geojson).unwrap();
 
     // Process the feature collection
-    let result = process_feature_collection(json_value);
+    let result = process_feature_collection(json_value, &mut TransformerConfig::default());
     assert!(result.is_ok());
 
     // Verify the results
@@ -161,7 +161,7 @@ fn test_complex_feature_collection_with_large_geometries() {
     let json_value = serde_json::to_value(geojson).unwrap();
 
     // Process with a larger buffer pool
-    let result = process_feature_collection(json_value);
+    let result = process_feature_collection(json_value, &mut TransformerConfig::default());
     match result {
         Ok(GeoJson::FeatureCollection(processed_collection)) => {
             assert_eq!(processed_collection.features.len(), 1);
@@ -216,7 +216,7 @@ fn test_complex_feature_collection_with_very_large_geometries() {
     let json_value = serde_json::to_value(geojson).unwrap();
 
     // Process with a larger buffer pool
-    let result = process_feature_collection(json_value);
+    let result = process_feature_collection(json_value, &mut TransformerConfig::default());
     match result {
         Ok(GeoJson::FeatureCollection(processed_collection)) => {
             assert_eq!(processed_collection.features.len(), 1);

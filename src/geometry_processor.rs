@@ -2,6 +2,7 @@ use crate::coordinates::{Coordinate, Line, Polygon as ProjectPolygon};
 use crate::error::ProjectionError;
 use crate::helpers::ProcessedGeometry;
 use crate::pool::CoordinateBufferPool;
+use crate::simplification::Simplify;
 use crate::transformer::TransformerConfig;
 use geo::{LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon as GeoPolygon};
 use geojson::Geometry;
@@ -364,11 +365,17 @@ impl<'a> GeometryProcessor<'a> {
         &mut self,
         buffer_pool: &mut CoordinateBufferPool,
     ) -> Result<ProcessedGeometry, ProjectionError> {
+        let epsilon = self.config.simplification_epsilon.unwrap_or(0.0);
         match &self.geometry.value {
             geojson::Value::Point(point) => {
                 Self::validate_coordinate(point[0], point[1])?;
                 let processor = PointProcessor::new(Point::new(point[0], point[1]));
-                processor.process(self.config, buffer_pool)
+                let processed = processor.process(self.config, buffer_pool)?;
+                if let ProcessedGeometry::Point(p) = processed {
+                    Ok(ProcessedGeometry::Point(p.simplify(epsilon)))
+                } else {
+                    Ok(processed)
+                }
             }
             geojson::Value::LineString(line_string) => {
                 for point in line_string {
@@ -379,7 +386,12 @@ impl<'a> GeometryProcessor<'a> {
                     .map(|p| Coordinate::new(p[0], p[1]))
                     .collect();
                 let processor = LineStringProcessor::new(coords);
-                processor.process(self.config, buffer_pool)
+                let processed = processor.process(self.config, buffer_pool)?;
+                if let ProcessedGeometry::LineString(ls) = processed {
+                    Ok(ProcessedGeometry::LineString(ls.simplify(epsilon)))
+                } else {
+                    Ok(processed)
+                }
             }
             geojson::Value::Polygon(polygon) => {
                 for ring in polygon {
@@ -399,7 +411,12 @@ impl<'a> GeometryProcessor<'a> {
                     .collect();
                 let processor =
                     PolygonProcessor::new(ProjectPolygon::new(Line::new(exterior), interiors));
-                processor.process(self.config, buffer_pool)
+                let processed = processor.process(self.config, buffer_pool)?;
+                if let ProcessedGeometry::Polygon(p) = processed {
+                    Ok(ProcessedGeometry::Polygon(p.simplify(epsilon)))
+                } else {
+                    Ok(processed)
+                }
             }
             geojson::Value::MultiPoint(points) => {
                 for point in points {
@@ -407,7 +424,12 @@ impl<'a> GeometryProcessor<'a> {
                 }
                 let coords = points.iter().map(|p| Coordinate::new(p[0], p[1])).collect();
                 let processor = MultiPointProcessor::new(coords);
-                processor.process(self.config, buffer_pool)
+                let processed = processor.process(self.config, buffer_pool)?;
+                if let ProcessedGeometry::MultiPoint(mp) = processed {
+                    Ok(ProcessedGeometry::MultiPoint(mp.simplify(epsilon)))
+                } else {
+                    Ok(processed)
+                }
             }
             geojson::Value::MultiLineString(lines) => {
                 let mut project_lines = Vec::new();
@@ -419,7 +441,12 @@ impl<'a> GeometryProcessor<'a> {
                     project_lines.push(Line::new(coords));
                 }
                 let processor = MultiLineStringProcessor::new(project_lines);
-                processor.process(self.config, buffer_pool)
+                let processed = processor.process(self.config, buffer_pool)?;
+                if let ProcessedGeometry::MultiLineString(mls) = processed {
+                    Ok(ProcessedGeometry::MultiLineString(mls.simplify(epsilon)))
+                } else {
+                    Ok(processed)
+                }
             }
             geojson::Value::MultiPolygon(polygons) => {
                 let mut project_polygons = Vec::new();
@@ -437,7 +464,12 @@ impl<'a> GeometryProcessor<'a> {
                     project_polygons.push(ProjectPolygon::new(Line::new(exterior), interiors));
                 }
                 let processor = MultiPolygonProcessor::new(project_polygons);
-                processor.process(self.config, buffer_pool)
+                let processed = processor.process(self.config, buffer_pool)?;
+                if let ProcessedGeometry::MultiPolygon(mp) = processed {
+                    Ok(ProcessedGeometry::MultiPolygon(mp.simplify(epsilon)))
+                } else {
+                    Ok(processed)
+                }
             }
             geojson::Value::GeometryCollection(geometries) => {
                 let mut processed_geometries: Vec<ProcessedGeometry> = Vec::new();

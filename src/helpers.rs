@@ -478,9 +478,9 @@ fn process_geometry(
 /// * `geojson::GeoJson` - A processed feature collection
 pub fn process_feature_collection(
     json_value: serde_json::Value,
+    mut config: &mut TransformerConfig,
 ) -> Result<geojson::GeoJson, ProjectionError> {
     let geojson = geojson::GeoJson::from_json_value(json_value)?;
-    let mut config = TransformerConfig::default();
     let mut buffer_pool = CoordinateBufferPool::new(10, 100);
     match geojson {
         geojson::GeoJson::Feature(feature) => {

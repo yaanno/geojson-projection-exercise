@@ -179,20 +179,21 @@ impl GeometryProcessorTrait for MultiPointProcessor {
     ) -> Result<ProcessedGeometry, ProjectionError> {
         let transformer = config.get_transformer()?;
         let mut projected_coords = buffer_pool.get_point_buffer()?;
+        projected_coords.clear();
+        projected_coords.reserve(self.coordinates.len());
 
         for coord in &self.coordinates {
             let point = Point::new(coord.x, coord.y);
             let projected = transformer.convert(point)?;
             projected_coords.push(projected.into());
         }
-        buffer_pool.return_point_buffer(projected_coords.clone())?;
-
         let multi_point = MultiPoint::from(
             projected_coords
                 .iter()
                 .map(|c| geo::Coord::from((c.x, c.y)))
                 .collect::<Vec<_>>(),
         );
+        buffer_pool.return_point_buffer(projected_coords)?;
         Ok(ProcessedGeometry::MultiPoint(multi_point))
     }
 }
